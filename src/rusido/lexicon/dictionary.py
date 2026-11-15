@@ -56,6 +56,17 @@ def _a(lemma, stem):
     return LexiconEntry(lemma=lemma, stem=stem, pos=POS_ADJ, source_form=stem + "ий")
 
 
+def _with_bootstrap(entries: list[LexiconEntry]) -> list[LexiconEntry]:
+    """Дополнить лексикон bootstrap-записями (lexicon/bootstrap.py)."""
+    from rusido.lexicon.bootstrap import bootstrap_entries  # noqa: PLC0415
+    seen = {e.lemma for e in entries}
+    for e in bootstrap_entries():
+        if e.lemma not in seen:
+            entries.append(e)
+            seen.add(e.lemma)
+    return entries
+
+
 DEFAULT_LEXICON: list[LexiconEntry] = [
     # --- Существительные (основа из Rusido.md, раздел 3) ---
     _n("стол", "стол"),
@@ -174,6 +185,9 @@ DEFAULT_LEXICON: list[LexiconEntry] = [
                  source_form="ест", meta={"invariant": True}),
     LexiconEntry("ну", "ну", POS_PARTICLE, meta={"kind": "impersonal"}),
 ]
+DEFAULT_LEXICON = _with_bootstrap(DEFAULT_LEXICON)
+
+
 
 
 class Lexicon:

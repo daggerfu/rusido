@@ -65,6 +65,11 @@ class RussianMorphAnalyzer:
         parses = self._morph.parse(word)
         if not parses:
             return None
+        # Разборы-аббревиатуры (Abbr) отбрасываем: pymorphy3 считает «е»
+        # аббревиатурой глагола «быть» и порождает «бует» вместо буквы.
+        full = [p for p in parses if "Abbr" not in p.tag]
+        if full:
+            parses = full
         if accept_lemma is not None:
             for p in parses:
                 if accept_lemma(p.normal_form):

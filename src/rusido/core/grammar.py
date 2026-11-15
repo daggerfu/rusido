@@ -11,6 +11,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from rusido.exceptions import InvalidFeatureError
+
 DEFAULT_GRAMMAR_PATH = Path("data") / "grammar" / "grammar.yaml"
 
 
@@ -57,3 +59,41 @@ def load_grammar(path: str | Path = DEFAULT_GRAMMAR_PATH) -> GrammarProfile:
         default_order=str(data["syntax"]["default_order"]),
         raw=data,
     )
+
+
+_default_profile: GrammarProfile | None = None
+
+
+def default_grammar() -> GrammarProfile:
+    """Грамматика по умолчанию (кешированная загрузка YAML)."""
+    global _default_profile
+    if _default_profile is None:
+        _default_profile = load_grammar()
+    return _default_profile
+
+
+class UnknownGrammarFeatureError(InvalidFeatureError):
+    """Признак (падеж, число, лицо) отсутствует в грамматике."""
+
+
+def number_suffix(grammar: GrammarProfile, number: str) -> str:
+    try:
+        return grammar.noun_number[number]
+    except KeyError:
+        raise UnknownGrammarFeatureError(f"неизвестное число: {number!r}") from None
+
+
+def case_suffix(grammar: GrammarProfile, case: str) -> str:
+    try:
+        return grammar.noun_case[case]
+    except KeyError:
+        raise UnknownGrammarFeatureError(f"неизвестный падеж: {case!r}") from None
+
+
+def present_suffix(grammar: GrammarProfile, person: int, number: str) -> str:
+    table = (grammar.present_sg if number == "singular" else grammar.present_pl)
+    try:
+        return table[person - 1]
+    except (IndexError, TypeError):
+        raise UnknownGrammarFeatureError(
+            f"недопустимая комбинация: лицо={person}, число={number!r}") from None

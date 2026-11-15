@@ -33,26 +33,49 @@ def is_vowel(ch: str) -> bool:
 
 
 def inflect_noun(stem: str, number: str = SINGULAR, case: str = NOMINATIVE,
-                 stem_type: str = "vowel") -> str:
+                 stem_type: str = "vowel",
+                 grammar: "GrammarProfile | None" = None) -> str:
     """Построить словоформу существительного по основе.
 
     Мягкая основа (типа «двер-ь») теряет «ь» перед гласным аффиксом числа
     или падежа: двер + и → двери (по образцу книг → книги).
+
+    Параметр `grammar` позволяет строить формы по произвольной версии
+    грамматики (core/grammar.py); без него используются константы модуля.
     """
-    if number not in NUMBERS:
-        raise InvalidFeatureError(f"неизвестное число: {number!r}")
-    if case not in CASES:
-        raise InvalidFeatureError(f"неизвестный падеж: {case!r}")
+    if grammar is None:
+        if number not in NUMBERS:
+            raise InvalidFeatureError(f"неизвестное число: {number!r}")
+        if case not in CASES:
+            raise InvalidFeatureError(f"неизвестный падеж: {case!r}")
+        number_suf, case_suf = NUMBER_SUFFIXES[number], CASE_SUFFIXES[case]
+    else:
+        from rusido.core.grammar import case_suffix, number_suffix
+        number_suf = number_suffix(grammar, number)
+        case_suf = case_suffix(grammar, case)
 
     base = stem
     if stem_type == STEM_PALATAL and base.endswith("ь"):
         base = base[:-1]
 
-    return base + NUMBER_SUFFIXES[number] + CASE_SUFFIXES[case]
+    return base + number_suf + case_suf
 
 
-def split_number_case(rest: str) -> tuple[str, str] | None:
+def split_number_case(rest: str,
+                      grammar: "GrammarProfile | None" = None) -> tuple[str, str] | None:
     """Разделить остаток после основы на (аффикс числа, аффикс падежа)."""
+    if grammar is not None:
+        plural = grammar.noun_number.get("plural", "и")
+        case_suffixes = set(grammar.noun_case.values()) - {""}
+        if rest == "":
+            return "", ""
+        if rest in case_suffixes:
+            return "", rest
+        if rest == plural:
+            return plural, ""
+        if rest.startswith(plural) and rest[len(plural):] in case_suffixes:
+            return plural, rest[len(plural):]
+        return None
     if rest == "":
         return "", ""
     if rest in ("у", "о", "е"):
@@ -64,7 +87,8 @@ def split_number_case(rest: str) -> tuple[str, str] | None:
     return None
 
 
-def segment_noun(word: str, stems: list[str]) -> tuple[str, str, str] | None:
+def segment_noun(word: str, stems: list[str],
+                 grammar: "GrammarProfile | None" = None) -> tuple[str, str, str] | None:
     """Разобрать словоформу по морфемной схеме ROOT + NUMBER + CASE.
 
     Валидатор проверяет форму именно по морфемной структуре с опорой на
@@ -75,19 +99,19 @@ def segment_noun(word: str, stems: list[str]) -> tuple[str, str, str] | None:
     for stem in stems:
         # Обычный вариант: аффиксы стоят сразу после основы (стол → стол-∅-у).
         if word.startswith(stem):
-            parsed = split_number_case(word[len(stem):])
+            parsed = split_number_case(word[len(stem):], grammar)
             if parsed is not None:
                 candidates.append((stem,) + parsed)
         # Мягкая основа, записанная с «ь» (имень): форма может содержать ь.
         if word.startswith(stem + "ь"):
-            parsed = split_number_case(word[len(stem) + 1:])
+            parsed = split_number_case(word[len(stem) + 1:], grammar)
             if parsed is not None:
                 candidates.append((stem + "ь",) + parsed)
         # Чередование мягкой основы: двер(ь) → двери (ь выпадает перед гласным).
         if stem.endswith("ь") and word.startswith(stem[:-1]):
             rest = word[len(stem) - 1:]
             if rest and is_vowel(rest[0]):
-                parsed = split_number_case(rest)
+                parsed = split_number_case(rest, grammar)
                 if parsed is not None:
                     candidates.append((stem,) + parsed)
     if not candidates:

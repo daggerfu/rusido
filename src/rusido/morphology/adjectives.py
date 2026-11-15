@@ -11,8 +11,9 @@ from __future__ import annotations
 ADJECTIVE_SUFFIX = "ий"
 
 
-def build_adjective(stem: str) -> str:
-    return stem + ADJECTIVE_SUFFIX
+def build_adjective(stem: str, grammar: "GrammarProfile | None" = None) -> str:
+    suffix = grammar.adjective_suffix if grammar is not None else ADJECTIVE_SUFFIX
+    return stem + suffix
 
 
 def comparative(stem_or_form: str) -> str:

@@ -53,3 +53,10 @@ def test_case_mapping_ablt_to_dative():
     # творительный отображается на дательный (README.md §13)
     a = RussianMorphAnalyzer().analyze("книгой")
     assert a.case == "dative"
+
+
+def test_abbr_parse_does_not_hijack_single_letter():
+    # «е» — буква алфавита, не аббревиатура глагола «быть» (баг «бует»)
+    translator = RusidoTranslator()
+    assert translator.translate("А Б В Г Д Е Ж").text == "А Б В Г Д Е Ж"
+    assert translator.translate("е").text == "е"

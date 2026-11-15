@@ -32,3 +32,29 @@ def test_yaml_grammar_can_generate_forms():
     g = grammar_module.load_grammar()
     assert "книг" + g.noun_number["plural"] + g.noun_case["accusative"] \
         == nouns.inflect_noun("книг", nouns.PLURAL, nouns.ACCUSATIVE)
+
+
+def test_custom_grammar_version_changes_output(tmp_path):
+    """grammar_version работает по-настоящему: кастомный YAML меняет формы."""
+    import yaml
+    data = yaml.safe_load(
+        grammar_module.DEFAULT_GRAMMAR_PATH.read_text(encoding="utf-8"))
+    data["language"]["version"] = "9.9"
+    data["noun"]["case"]["accusative"] = "ун"   # вместо -у
+    data["adjective"]["suffix"] = "ая"
+    path = tmp_path / "grammar_9_9.yaml"
+    path.write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
+
+    grammar = grammar_module.load_grammar(path)
+    assert grammar.version == "9.9"
+
+    from rusido import RusidoTranslator, RusidoValidator
+    translator = RusidoTranslator(grammar=grammar)
+    assert translator.grammar_version == "9.9"
+    assert translator.translate("книгу").text == "книгун"
+    assert translator.translate("новый").text == "новая"
+
+    # валидатор принимает формы новой версии и отклоняет старые
+    validator = RusidoValidator(grammar=grammar)
+    assert validator.validate("книгун.").valid
+    assert not validator.validate("книгу.").valid

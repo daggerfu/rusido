@@ -62,9 +62,11 @@ class ValidationReport:
 class RusidoValidator:
     """Главный валидатор Русидо. Работает без внешних NLP-моделей."""
 
-    def __init__(self, lexicon: Lexicon | None = None, strict: bool = False):
+    def __init__(self, lexicon: Lexicon | None = None, strict: bool = False,
+                 grammar: "GrammarProfile | None" = None):
         self.lexicon = lexicon or Lexicon()
         self.strict = strict
+        self.grammar = grammar
 
     # ---------- публичный API ----------
 
@@ -118,7 +120,9 @@ class RusidoValidator:
 
         # 1. Орфография: запрещённые буквы (R006) — проверяется исходное написание,
         #    исправление даёт нормализованную форму (ёлка → елка, чёрный → черний).
-        bad = [ch for ch in word.lower() if ch in FORBIDDEN_LETTERS]
+        alphabet = self.grammar.alphabet if self.grammar else ALPHABET
+        forbidden = self.grammar.forbidden if self.grammar else FORBIDDEN_LETTERS
+        bad = [ch for ch in word.lower() if ch in forbidden]
         if bad:
             fixed = normalize_word(word)
             diags.append(Diagnostic(
@@ -128,7 +132,7 @@ class RusidoValidator:
             return diags
 
         low = word.lower()
-        unknown_letters = [ch for ch in low if ch not in ALPHABET]
+        unknown_letters = [ch for ch in low if ch not in alphabet]
         if unknown_letters:
             diags.append(Diagnostic(
                 "R007", "error",
@@ -224,7 +228,7 @@ class RusidoValidator:
                             expected = nouns.inflect_noun(
                                 stem,
                                 "plural" if need_plural else "singular",
-                                nxt["case"])
+                                nxt["case"], grammar=self.grammar)
                             errors.append(Diagnostic(
                                 "R015", "error",
                                 f"нарушение правила числа после числительного "
@@ -267,15 +271,18 @@ class RusidoValidator:
         return stems, cons, inv
 
     def _known_noun_form(self, word: str) -> dict | None:
-        seg = nouns.segment_noun(word, self._noun_stems())
+        seg = nouns.segment_noun(word, self._noun_stems(), self.grammar)
         if seg is None:
             return None
         root, num_suf, case_suf = seg
-        return {
-            "root": root,
-            "number": "plural" if num_suf == "и" else "singular",
-            "case": nouns.CASE_SUFFIXES_INV[case_suf],
-        }
+        if self.grammar is not None:
+            number = "singular" if num_suf == "" else                 next(k for k, v in self.grammar.noun_number.items() if v == num_suf)
+            case = next(k for k, v in self.grammar.noun_case.items()
+                        if v == case_suf)
+        else:
+            number = "plural" if num_suf == "и" else "singular"
+            case = nouns.CASE_SUFFIXES_INV[case_suf]
+        return {"root": root, "number": number, "case": case}
 
     def _known_verb_form(self, word: str) -> dict | None:
         stems, cons, inv = self._verb_data()
@@ -290,7 +297,8 @@ class RusidoValidator:
     def _expected_form(self, stem: str, person: int, number: str) -> str:
         entry_number = "singular" if number == "sg" else "plural"
         stem_type = "cons_stem" if stem in self._verb_data()[1] else "vowel_stem"
-        return verbs.conjugate_present(stem, person, entry_number, stem_type)
+        return verbs.conjugate_present(stem, person, entry_number, stem_type,
+                                     grammar=self.grammar)
 
     def _suggest(self, word: str) -> str | None:
         """Простейший движок исправлений: ближайшее словарное слово."""

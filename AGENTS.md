@@ -11,7 +11,7 @@
 
 Дополнительно: морфологический анализатор (`RusidoAnalyzer`), лексикон (`Lexicon`), CLI `rusido`.
 
-Проект находится на стадии **MVP**: переводчик использует **pymorphy3** (опционально, `rusido/core/nlp.py`) для разбора русских форм — лемма, падеж, число, лицо, время; при отсутствии библиотеки или выключенном флаге `use_nlp=False` работают собственные эвристики MVP. spaCy/NLTK не используются. Неизвестные слова орфографически нормализуются и снижают confidence. Есть `pyproject.toml` (установка `pip install -e .`, команда `rusido`); `Makefile` и `examples/` пока нет. CLI-модуль — `src/rusido/cli.py` (`translate`, `validate`, `corpus`, `dictionary`). SQLite-хранилище — `src/rusido/lexicon/storage.py` (`data/rusido.db` в .gitignore). Базовый набор pytest-тестов есть в `tests/`.
+Проект находится на стадии **MVP**: переводчик использует **pymorphy3** (опционально, `rusido/core/nlp.py`) для разбора русских форм — лемма, падеж, число, лицо, время; при отсутствии библиотеки или выключенном флаге `use_nlp=False` работают собственные эвристики MVP. spaCy/NLTK не используются. Неизвестные слова орфографически нормализуются и снижают confidence. Есть `pyproject.toml` (установка `pip install -e .`, команда `rusido`); `Makefile` и `examples/` пока нет. CLI-модуль — `src/rusido/cli.py` (`translate`, `validate`, `corpus`, `dictionary`). SQLite-хранилище — `src/rusido/lexicon/storage.py` (`data/rusido.db` в .gitignore); YAML-грамматика — `data/grammar/grammar.yaml`. Базовый набор pytest-тестов есть в `tests/`.
 
 ## Документация проекта
 
@@ -36,7 +36,8 @@
 | `analyzer.py` | `RusidoAnalyzer`, `AnalysisItem` — морфемный разбор формы Русидо |
 | `core/normalizer.py` | алфавит, запрещённые буквы, `normalize_word` |
 | `core/nlp.py` | `RussianMorphAnalyzer`, `RussianAnalysis` — разбор русских форм через pymorphy3 (опционально, откат на эвристики) |
-| `lexicon/dictionary.py` | `Lexicon`, `LexiconEntry`, константы POS и типов основ (STEM_VOWEL/STEM_PALATAL, VERB_VOWEL/VERB_CONSONANT); загрузка/экспорт JSON |
+| `core/grammar.py` | `GrammarProfile`, `load_grammar` — загрузка формальной грамматики из `data/grammar/grammar.yaml` (тест `test_grammar_yaml` держит YAML и код синхронно) |
+| `lexicon/dictionary.py` | `Lexicon`, `LexiconEntry`, константы POS и типов основ (STEM_VOWEL/STEM_PALATAL, VERB_VOWEL/VERB_CONSONANT); загрузка/экспорт JSON; 535+ записей (bootstrap из `lexicon/bootstrap.py`) |
 | `morphology/nouns.py` | `inflect_noun`, константы числа/падежа |
 | `morphology/verbs.py` | спряжение, будущее, повелительное, условное |
 | `morphology/adjectives.py` | `build_adjective`, сравнительные степени (`более X` / `самий X`) |

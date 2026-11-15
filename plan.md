@@ -12,14 +12,15 @@
 | Морфология существительных | ✅ готово | ROOT+NUMBER+CASE, мягкие основы (`дверь→двери`), сегментация `segment_noun`; тесты `test_nouns.py` |
 | Морфология глаголов | ✅ готово | спряжение, соединительная «е», прош./буд./повел./условное/отрицание; тесты `test_verbs.py` |
 | Прилагательные, числительные, местоимения | ✅ базово | неизменяемые `-ий`, аналитические степени, кардинальные/порядковые, местоименные таблицы; `test_morphology_misc.py` |
-| Лексикон | ✅ базово | `Lexicon`/`LexiconEntry`, JSON-сериализация, ~90 записей (цель MVP — 500, не достигнута) |
+| Лексикон | ✅ готово | `Lexicon`/`LexiconEntry`, JSON + SQLite, 535 записей (критерий MVP README §15 достигнут, bootstrap-качество основ) |
 | Валидатор | ✅ базово | уровни орфографии/лексики/морфологии/синтаксиса; коды R001, R005–R008, R015; strict-режим; `test_validator.py` |
 | Переводчик | ✅ базово + NLP | pymorphy3-интеграция (`core/nlp.py`), откат на эвристики (`use_nlp=False`); предупреждения/confidence; `test_translator.py`, `test_nlp.py` |
 | Сквозная целостность | ✅ готово | тест «вывод переводчика проходит валидацию» (`test_roundtrip.py`, README §11) |
 | CLI | ✅ базово | `translate` и `validate`, файлы/stdin/stdout, `--no-nlp`, `--strict`, коды выхода; `python3 -m rusido.cli`; `test_cli.py` |
 | Тесты | ✅ готово | 110 тестов, все зелёные (`python3 -m pytest tests`) |
 | pyproject.toml / entry point `rusido` | ✅ готово | `pip install -e .`, команда `rusido` |
-| SQLite-хранилище (README §4.6) | ✅ базово | `lexicon/storage.py`: `words`, `corpus_sentences`; CLI `corpus`/`dictionary` |
+| SQLite-хранилище (README §4.6) | ✅ базово | `lexicon/storage.py`: `words`, `corpus_sentences`; CLI `corpus`/`dictionary`; поиск регистронезависим |
+| YAML-грамматика (README §10) | ✅ базово | `data/grammar/grammar.yaml` + `core/grammar.py`; тест держит YAML и код синхронно |
 
 ## 2. Что будет сделано
 
@@ -32,6 +33,7 @@
 ### Этап 2. Грамматика как данные
 - [x] `pyproject.toml` + установка `pip install -e .`, entry point `rusido`, зависимости (pymorphy3, extras: spacy/evaluation/dev).
 - [x] SQLite-база (`data/rusido.db`, README §4.6): `SqliteStorage` (words/translations/corpus_sentences), CLI `corpus add/search/stats`, `dictionary import/export`; валидатор и морфология от базы не зависят.
+- [x] Морфология принимает `GrammarProfile` (nouns/verbs/adjectives + сегментация валидатора); кастомный YAML реально меняет формы (тест `test_custom_grammar_version_changes_output`). Осталось: флаг `--grammar` в CLI.
 - [ ] CI (GitHub Actions).
 - Вынести суффиксные таблицы и правила в `data/grammar/grammar.yaml`; загрузка через `RusidoConfig.grammar_version`.
 - Расширить лексикон до 500+ записей (критерий MVP README §15) с поддержкой алломорфов.

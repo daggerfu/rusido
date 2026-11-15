@@ -54,16 +54,28 @@ def _attach(stem: str, suffix: str, stem_type: str) -> str:
 
 
 def conjugate_present(stem: str, person: int, number: str = "singular",
-                      stem_type: str = "vowel_stem") -> str:
-    try:
-        suffix = CONJUGATION_TABLE[("present", person, number)]
-    except KeyError:
-        raise InvalidFeatureError(
-            f"недопустимая комбинация: лицо={person}, число={number!r}") from None
-    return _attach(stem, suffix, stem_type)
+                      stem_type: str = "vowel_stem",
+                      grammar: "GrammarProfile | None" = None) -> str:
+    if grammar is None:
+        try:
+            suffix = CONJUGATION_TABLE[("present", person, number)]
+        except KeyError:
+            raise InvalidFeatureError(
+                f"недопустимая комбинация: лицо={person}, число={number!r}"
+            ) from None
+        return _attach(stem, suffix, stem_type)
+    from rusido.core.grammar import present_suffix
+    return _attach(stem, present_suffix(grammar, person, number), stem_type)
 
 
-def conjugate_past(stem: str, number: str = "singular") -> str:
+def conjugate_past(stem: str, number: str = "singular",
+                   grammar: "GrammarProfile | None" = None) -> str:
+    if grammar is not None:
+        suffix = {"singular": grammar.past_sg,
+                  "plural": grammar.past_pl}.get(number)
+        if suffix is None:
+            raise InvalidFeatureError(f"неизвестное число: {number!r}")
+        return stem + suffix
     if number == "singular":
         return stem + PAST_SINGULAR
     if number == "plural":

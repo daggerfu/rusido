@@ -46,9 +46,11 @@ class TranslationResult:
 
 class RusidoTranslator:
     def __init__(self, lexicon: Lexicon | None = None, grammar_version: str = "1.0",
-                 use_nlp: bool = True):
+                 use_nlp: bool = True,
+                 grammar: "GrammarProfile | None" = None):
         self.lexicon = lexicon or Lexicon()
-        self.grammar_version = grammar_version
+        self.grammar = grammar
+        self.grammar_version = grammar.version if grammar else grammar_version
         # NLP-анализатор опционален: без pymorphy3 работают эвристики MVP.
         self._nlp = RussianMorphAnalyzer() if use_nlp else None
 
@@ -122,14 +124,16 @@ class RusidoTranslator:
             return None
 
         if entry.pos == POS_ADJ:
-            return _cap(adjectives.build_adjective(entry.stem), capitalized)
+            return _cap(adjectives.build_adjective(entry.stem, self.grammar),
+                        capitalized)
 
         if entry.pos == POS_NOUN:
             case = analysis.case if analysis and analysis.case \
                 else _guess_ru_case(raw, word)
             number = analysis.number if analysis and analysis.number \
                 else _guess_ru_number(word)
-            form = nouns.inflect_noun(entry.stem, number, case, entry.stem_type)
+            form = nouns.inflect_noun(entry.stem, number, case, entry.stem_type,
+                                      grammar=self.grammar)
             return _cap(form, capitalized)
 
         if entry.pos == POS_VERB:
@@ -157,7 +161,8 @@ class RusidoTranslator:
                     stem, plural=analysis.number == "plural", stem_type=stem_type)
             if analysis.tense == "present" and analysis.person and analysis.number:
                 return verbs.conjugate_present(
-                    stem, analysis.person, analysis.number, stem_type)
+                    stem, analysis.person, analysis.number, stem_type,
+                    grammar=self.grammar)
 
         # Прошедшее время: читал/читали, писал...
         if re.search(r"([аясь]|или)$", ru_word) and len(ru_word) > 3 \
