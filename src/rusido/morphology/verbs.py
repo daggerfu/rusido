@@ -12,7 +12,7 @@
 from __future__ import annotations
 
 from rusido.exceptions import InvalidFeatureError
-from rusido.lexicon.dictionary import VERB_CONSONANT
+from rusido.lexicon.dictionary import VERB_CONSONANT, VERB_VOWEL
 from rusido.morphology.nouns import is_vowel
 
 PRESENT_SG = ("м", "ш", "т")
@@ -69,17 +69,18 @@ def conjugate_present(stem: str, person: int, number: str = "singular",
 
 
 def conjugate_past(stem: str, number: str = "singular",
-                   grammar: "GrammarProfile | None" = None) -> str:
+                   grammar: "GrammarProfile | None" = None,
+                   stem_type: str = VERB_VOWEL) -> str:
     if grammar is not None:
         suffix = {"singular": grammar.past_sg,
                   "plural": grammar.past_pl}.get(number)
         if suffix is None:
             raise InvalidFeatureError(f"неизвестное число: {number!r}")
-        return stem + suffix
+        return _attach(stem, suffix, stem_type)
     if number == "singular":
-        return stem + PAST_SINGULAR
+        return _attach(stem, PAST_SINGULAR, stem_type)
     if number == "plural":
-        return stem + PAST_PLURAL
+        return _attach(stem, PAST_PLURAL, stem_type)
     raise InvalidFeatureError(f"неизвестное число: {number!r}")
 
 

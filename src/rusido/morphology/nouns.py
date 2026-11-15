@@ -149,12 +149,15 @@ def segment_verb(form: str, stems: set[str],
         if stem in stems:
             return {"stem": stem, "mood": "infinitive"}
 
-    # Прошедшее: основа + л/ли («читал», «читали»)
+    # Прошедшее: основа (+е) + л/ли («читал», «идел» — Rusido.md, 7.3)
     for suf, number in PAST_SUFFIXES.items():
         if form.endswith(suf):
             stem = form[: -len(suf)]
             if stem in stems:
                 return {"stem": stem, "tense": "past", "number": number}
+            if stem.endswith("е") and stem[:-1] in consonant_stems:
+                return {"stem": stem[:-1], "tense": "past", "number": number,
+                        "epenthetic": True}
 
     # Настоящее: основа (+е) + личное окончание
     for suf in sorted(PRESENT_SUFFIXES, key=len, reverse=True):

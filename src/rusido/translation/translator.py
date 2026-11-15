@@ -152,7 +152,8 @@ class RusidoTranslator:
         # Признаки из pymorphy3 (если доступны) — точнее эвристик.
         if analysis is not None and analysis.tense:
             if analysis.tense == "past" and analysis.number:
-                return verbs.conjugate_past(stem, analysis.number)
+                return verbs.conjugate_past(stem, analysis.number,
+                                            stem_type=stem_type)
             if analysis.tense == "future" and not ru_word.startswith("буд"):
                 return verbs.conjugate_future(
                     analysis.person or 1, analysis.number or "singular", inf)
@@ -239,6 +240,9 @@ def _past_with_prefix(ru_word: str, rusido_stem: str, number: str,
                  ru_word)
     if m and m.group(0) != rusido_stem[: len(m.group(0))]:
         prefix = normalize_word(m.group(0))
+    from rusido.lexicon.dictionary import VERB_CONSONANT  # noqa: PLC0415
+    if stem_type == VERB_CONSONANT:
+        rusido_stem = rusido_stem + "е"   # ид + е + л = идел (Rusido.md, 7.3)
     return prefix + rusido_stem + ("ли" if number == "plural" else "л")
 
 

@@ -104,3 +104,16 @@ def test_validate_word_lowercases(validator):
 def test_diagnostics_property(validator):
     report = validator.validate("ёлка.")
     assert len(report.diagnostics) == len(report.errors) + len(report.warnings)
+
+
+def test_spec_sample_text_validates(validator):
+    """Образец текста из Rusido.md §11 проходит валидацию без ошибок."""
+    sample = (
+        "Мой брат жит в болший красивий доме. "
+        "У нему ест два собаки. "
+        "Я любим читати новий книгиу. "
+        "Вчера я прочитал интересний книгу, кторий се писал од известний авторо. "
+        "Завтра я будем писати письмо."
+    )
+    report = validator.validate(sample)
+    assert report.valid, [(e.code, e.message) for e in report.errors]

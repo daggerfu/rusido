@@ -72,3 +72,12 @@ def test_invalid_combination_raises():
         verbs.conjugate_past("чита", "dual")
     with pytest.raises(InvalidFeatureError):
         verbs.conjugate_future(4, "singular", "читати")
+
+
+def test_past_epenthetic_e_for_consonant_stem():
+    # Rusido.md §7.3: ид + е + л = идел
+    assert verbs.conjugate_past("ид", stem_type=VERB_CONSONANT) == "идел"
+    assert verbs.conjugate_past("ид", "plural", stem_type=VERB_CONSONANT) \
+        == "идели"
+    # гласные основы не меняются
+    assert verbs.conjugate_past("чита") == "читал"

@@ -71,3 +71,9 @@ def test_segment_verb_invariant():
 
 def test_segment_verb_unknown():
     assert segment_verb("книга", {"чита"}) is None
+
+
+def test_segment_verb_past_epenthetic():
+    info = segment_verb("идел", {"ид"}, {"ид"})
+    assert info["stem"] == "ид" and info["tense"] == "past" \
+        and info.get("epenthetic")
