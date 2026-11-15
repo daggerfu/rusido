@@ -30,10 +30,12 @@ TENS = {20 + 10 * i: f"{base}дек"
                                   "шест", "сем", "восем", "девят"])}
 HUNDREDS = {100: "сто", 200: "двесто", 300: "тристо", 400: "четирсто", 500: "пятсто"}
 THOUSANDS = {1000: "однтис", 2000: "дватис", 3000: "тритис",
-             4000: "четиртис", 5000: "пяттис"}
+             4000: "четиртис", 5000: "пятис"}
 
 CARDINALS = {}
-CARDINALS.update(CARDINAL_SMALL, TEENS, TENS, HUNDREDS, THOUSANDS)
+for _table in (CARDINAL_SMALL, TEENS, TENS, HUNDREDS, THOUSANDS):
+    CARDINALS.update(_table)
+del _table
 
 ORDINAL_SUFFIX = "им"  # 6.6: одним, дваим, триим...
 

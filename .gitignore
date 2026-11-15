@@ -216,3 +216,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Rusido
+*.db
+*.db-journal
+data/rusido.db

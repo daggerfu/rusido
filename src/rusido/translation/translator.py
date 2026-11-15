@@ -11,6 +11,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+from rusido.core.nlp import RussianAnalysis, RussianMorphAnalyzer
 from rusido.core.normalizer import normalize_word
 from rusido.lexicon.dictionary import (
     POS_ADJ, POS_NOUN, POS_NUM, POS_VERB, Lexicon,
@@ -26,9 +27,9 @@ _RU_CASE_TO_RUSIDO = {
 
 # Таблица соответствия: русская лемма → ключ записи лексикона Русидо.
 # Соблюдает правила орфографии Русидо (Rusido.md, 2.2): ё→е, ы→и, э→е.
-RU_TO_LEMMA_OVERRIDES = {
-    "большой": "болший",   # прилагательное: основа болш + ий
-}
+# Лемма «большой» совпадает с лексиконом, отдельный override не требуется:
+# основа «болш» хранится в записи лексикона и даёт форму «болший».
+RU_TO_LEMMA_OVERRIDES: dict[str, str] = {}
 
 _WORD_RE = re.compile(r"[а-яёьъ]+", re.IGNORECASE)
 
@@ -44,9 +45,16 @@ class TranslationResult:
 
 
 class RusidoTranslator:
-    def __init__(self, lexicon: Lexicon | None = None, grammar_version: str = "1.0"):
+    def __init__(self, lexicon: Lexicon | None = None, grammar_version: str = "1.0",
+                 use_nlp: bool = True):
         self.lexicon = lexicon or Lexicon()
         self.grammar_version = grammar_version
+        # NLP-анализатор опционален: без pymorphy3 работают эвристики MVP.
+        self._nlp = RussianMorphAnalyzer() if use_nlp else None
+
+    @property
+    def nlp_available(self) -> bool:
+        return self._nlp is not None and self._nlp.available
 
     # ---------- публичный API ----------
 
@@ -93,6 +101,7 @@ class RusidoTranslator:
                 hits += 1
                 out.append(word_out)
             else:
+                warnings.append(f"неизвестное слово: {part}")
                 out.append(normalize_word(part))
         return "".join(out), (total, hits)
 
@@ -100,9 +109,15 @@ class RusidoTranslator:
         """Вернуть форму Русидо либо None, если слово неизвестно."""
         word = raw.lower()
         capitalized = raw[0].isupper()
+        analysis = self._nlp.analyze(
+            word, accept_lemma=lambda lemma: self.lexicon.has(
+                normalize_word(lemma))) if self._nlp else None
 
         lemma = RU_TO_LEMMA_OVERRIDES.get(word, normalize_word(word))
         entry = self.lexicon.lookup(lemma)
+        if entry is None and analysis is not None:
+            # NLP даёт нормальную форму: читаю → читать (lemma из pymorphy3).
+            entry = self.lexicon.lookup(normalize_word(analysis.lemma))
         if entry is None:
             return None
 
@@ -110,22 +125,39 @@ class RusidoTranslator:
             return _cap(adjectives.build_adjective(entry.stem), capitalized)
 
         if entry.pos == POS_NOUN:
-            case = _guess_ru_case(raw, word)
-            number = _guess_ru_number(word)
+            case = analysis.case if analysis and analysis.case \
+                else _guess_ru_case(raw, word)
+            number = analysis.number if analysis and analysis.number \
+                else _guess_ru_number(word)
             form = nouns.inflect_noun(entry.stem, number, case, entry.stem_type)
             return _cap(form, capitalized)
 
         if entry.pos == POS_VERB:
-            return _cap(self._verb_form(entry, word), capitalized)
+            return _cap(self._verb_form(entry, word, analysis), capitalized)
 
         # Местоимения, числительные, служебные — инвариантные формы.
         return _cap(entry.lemma if entry.source_form is None else entry.source_form,
                     capitalized)
 
-    def _verb_form(self, entry, ru_word: str) -> str:
-        """Выбор формы глагола по русской форме (эвристика MVP)."""
+    def _verb_form(self, entry, ru_word: str,
+                   analysis: RussianAnalysis | None = None) -> str:
+        """Выбор формы глагола: сначала признаки NLP, затем эвристики MVP."""
         stem, stem_type = entry.stem, entry.stem_type
         inf = entry.source_form or verbs.infinitive(stem)
+
+        # Признаки из pymorphy3 (если доступны) — точнее эвристик.
+        if analysis is not None and analysis.tense:
+            if analysis.tense == "past" and analysis.number:
+                return verbs.conjugate_past(stem, analysis.number)
+            if analysis.tense == "future" and not ru_word.startswith("буд"):
+                return verbs.conjugate_future(
+                    analysis.person or 1, analysis.number or "singular", inf)
+            if analysis.mood == "imperative":
+                return verbs.imperative(
+                    stem, plural=analysis.number == "plural", stem_type=stem_type)
+            if analysis.tense == "present" and analysis.person and analysis.number:
+                return verbs.conjugate_present(
+                    stem, analysis.person, analysis.number, stem_type)
 
         # Прошедшее время: читал/читали, писал...
         if re.search(r"([аясь]|или)$", ru_word) and len(ru_word) > 3 \

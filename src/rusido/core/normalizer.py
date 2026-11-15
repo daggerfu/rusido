@@ -2,46 +2,44 @@
 
 from __future__ import annotations
 
+import re
+
 # 29 букв; ё, ы, э, ъ в алфавите отсутствуют (Rusido.md, 2.1—2.2).
 ALPHABET = "абвгдежзийклмнопрстуфхцчшщьюя"
 
 FORBIDDEN_LETTERS = "ёыэъ"
 
-# Русский «ъ» на конце после велярных (г/к/х) перед согласной переходит в «ь»
-# (объект → обьект, съезд → сьезд); в остальных позициях он просто удаляется.
+# Русский «ъ» в любом случае заменяется на «ь» (объект → обьект,
+# съезд → сьезд, съемка → сьемка).
 _FORBIDDEN_MAP = {
     "ё": "е",
+    "Ё": "Е",
     "Ы": "И",
     "ы": "и",
     "Э": "Е",
     "э": "е",
-    "Ъ": "",
-    "ъ": "",
+    "Ъ": "Ь",
+    "ъ": "ь",
 }
 
-_VELAR_CONSONANTS = "гкх"
-_POST_VELEAR_CONSONANTS = "бвгдджзклмнпрстфхцчшщ"
+# Удвоенные согласные запрещены (Rusido.md, 2.6): две одинаковые согласные
+# подряд сокращаются до одной.
+DOUBLED_CONSONANT = re.compile(r"([бвгджзйклмнпрстфхцчшщ])\1", re.IGNORECASE)
 
 
-def _convert_trailing_hard_sign(text: str) -> str:
-    out = []
-    for i, ch in enumerate(text):
-        if ch in ("Ъ", "ъ"):
-            prev = text[i - 1].lower() if i > 0 else ""
-            nxt = text[i + 1].lower() if i + 1 < len(text) else ""
-            if prev in _VELAR_CONSONANTS and nxt in _POST_VELEAR_CONSONANTS:
-                out.append("ь" if ch == "ъ" else "Ь")
-                continue
-            continue  # удаление
-        out.append(ch)
-    return "".join(out)
+def _collapse_doubled_consonants(text: str) -> str:
+    while True:
+        collapsed = DOUBLED_CONSONANT.sub(r"\1", text)
+        if collapsed == text:
+            return collapsed
+        text = collapsed
 
 
 def normalize_word(word: str) -> str:
     """Привести русское слово к орфографии Русидо.
 
-    Правила (Rusido.md, 2.2): ё→е, ы→и, э→е; ъ отпадает, кроме позиции
-    после г/к/х перед согласной, где он заменяется на мягкий знак.
+    Правила (Rusido.md, 2.2 и 2.6): ё→е, ы→и, э→е, ъ→ь; удвоенные
+    согласные сокращаются до одной.
     """
-    mapped = word.translate(str.maketrans(_FORBIDDEN_MAP))
-    return _convert_trailing_hard_sign(mapped)
+    text = word.translate(str.maketrans(_FORBIDDEN_MAP))
+    return _collapse_doubled_consonants(text)

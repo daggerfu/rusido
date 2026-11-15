@@ -9,7 +9,9 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from rusido.core.normalizer import ALPHABET, FORBIDDEN_LETTERS, normalize_word
+from rusido.core.normalizer import (
+    ALPHABET, DOUBLED_CONSONANT, FORBIDDEN_LETTERS, normalize_word,
+)
 from rusido.lexicon.dictionary import (
     POS_ADJ, POS_ADV, POS_CONJ, POS_NUM, POS_NOUN, POS_PARTICLE, POS_PREP,
     POS_PRON, POS_VERB, Lexicon,
@@ -131,6 +133,16 @@ class RusidoValidator:
             diags.append(Diagnostic(
                 "R007", "error",
                 f"символ вне алфавита: '{unknown_letters[0]}'",
+                line=line, column=column))
+            return diags
+
+        # Удвоенные согласные запрещены (Rusido.md, 2.6) — код R007.
+        m = DOUBLED_CONSONANT.search(low)
+        if m:
+            diags.append(Diagnostic(
+                "R007", "error",
+                f"удвоенная согласная '{m.group()}'",
+                suggestion=normalize_word(word),
                 line=line, column=column))
             return diags
 

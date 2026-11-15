@@ -11,6 +11,8 @@ from __future__ import annotations
 import json
 from dataclasses import asdict, dataclass, field
 
+from rusido.core.normalizer import normalize_word
+
 POS_NOUN = "noun"
 POS_VERB = "verb"
 POS_ADJ = "adj"
@@ -102,7 +104,7 @@ DEFAULT_LEXICON: list[LexiconEntry] = [
     _a("большой", "болш"),
     _a("интересный", "интерес"),
     _a("известный", "извест"),
-    _a("русский", "руск"),
+    _a("руский", "руск"),
     _a("синий", "син"),
     _a("холодный", "холод"),
     _a("плохой", "плох"),
@@ -137,7 +139,7 @@ DEFAULT_LEXICON: list[LexiconEntry] = [
         "шестнадек", "семнадек", "восемнадек", "девятнадек",
         "двадек", "тридек", "четирдек", "пятдек", "шестдек", "семдек", "восемдек", "девятдек",
         "сто", "двесто", "тристо", "четирсто", "пятсто",
-        "однтис", "дватис", "тритис", "четиртис", "пяттис",
+        "однтис", "дватис", "тритис", "четиртис", "пятис",
     ]],
     # --- Наречия, частицы, союзы, предлоги (Rusido.md, 8.6—8.8) ---
     LexiconEntry("уже", "уже", POS_ADV),
@@ -184,6 +186,12 @@ class Lexicon:
             self.add(entry)
 
     def add(self, entry: LexiconEntry) -> None:
+        # Лемма, основа и каноническая форма хранятся в орфографии Русидо:
+        # нормализация при добавлении (Rusido.md, 2.2 и 2.6).
+        entry.lemma = normalize_word(entry.lemma)
+        entry.stem = normalize_word(entry.stem)
+        if entry.source_form is not None:
+            entry.source_form = normalize_word(entry.source_form)
         self._by_lemma.setdefault(entry.lemma, entry)
 
     def lookup(self, lemma: str) -> LexiconEntry | None:

@@ -1,0 +1,59 @@
+language:
+  name: Rusido
+  version: "1.0"
+
+orthography:
+  alphabet: "абвгдежзийклмнопрстуфхцчшщьюя"
+  forbidden: [ё, ы, э, ъ]
+  replacements:
+    ё: е
+    ы: и
+    э: е
+    ъ: ь
+  doubled_consonants: false   # Rusido.md, 2.6
+
+noun:
+  number:
+    singular: ""
+    plural: и
+  case:
+    nominative: ""
+    accusative: у
+    genitive: о
+    dative: е
+  order: [root, number, case]
+
+adjective:
+  suffix: ий
+  inflection: false
+  position: before_noun
+
+verb:
+  infinitive_suffix: ти
+  present:
+    singular: [м, ш, т]        # 1, 2, 3 лицо
+    plural: [ми, те, ни]
+  past:
+    singular: л
+    plural: ли
+  future:
+    auxiliary: будти
+    pattern: finite_auxiliary + infinitive
+  conditional:
+    particle: би
+    pattern: particle + past
+  negation:
+    particle: не
+  epenthetic_vowel: е          # соединительная гласная при основе на согласный
+
+numerals:
+  cardinal_suffixes:
+    ordinal: им
+
+syntax:
+  default_order: SVO
+  adjective_position: before_noun
+  passive: object + се + verb
+
+number_system:
+  dual: false

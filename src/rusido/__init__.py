@@ -8,7 +8,7 @@ from rusido.analyzer import AnalysisItem, RusidoAnalyzer
 from rusido.config import RusidoConfig
 from rusido.core.normalizer import normalize_word
 from rusido.lexicon import Lexicon, LexiconEntry
-from rusido.morphology import adjectives, nouns, numerals, pronouns, verbs
+from rusido.morphology import adjectives, nouns, numerals, verbs
 from rusido.translation import RusidoTranslator
 from rusido.validation import Diagnostic, RusidoValidator, ValidationReport
 
@@ -29,6 +29,5 @@ __all__ = [
     "nouns",
     "verbs",
     "adjectives",
-    "pronouns",
     "numerals",
 ]

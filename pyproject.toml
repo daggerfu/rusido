@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rusido-tools"
+version = "0.1.0"
+description = "Translator and grammar validator for Rusido — regularized Russian engineered language"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+
+dependencies = [
+    "pymorphy3",
+    "pymorphy3-dicts-ru",
+]
+
+[project.optional-dependencies]
+spacy = ["spacy"]
+evaluation = ["nltk"]
+dev = ["pytest", "ruff", "mypy"]
+
+[project.scripts]
+rusido = "rusido.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

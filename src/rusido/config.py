@@ -9,4 +9,7 @@ from dataclasses import dataclass
 class RusidoConfig:
     grammar_version: str = "1.0"
     analysis_backend: str = "spacy"
+    # Использовать pymorphy3 для разбора русских форм (при отсутствии —
+    # автоматический откат на эвристики MVP).
+    use_nlp: bool = True
     strict: bool = False

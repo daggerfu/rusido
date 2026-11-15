@@ -576,6 +576,67 @@ prepositions:
 
 **Почему это важно:** нельзя надежно получать все основы Русидо простым удалением русских окончаний. Например, `книга → книг`, `дверь → двер`, `армия → арми`. Поэтому лексикон должен хранить именно целевую основу, независимо от того, как она получена.
 
+### **4.6. База данных SQLite**
+
+Лексикон и все переводческие данные должны храниться не только в статических JSON-файлах, но и в базе **SQLite** (`data/rusido.db`). SQLite выбрана сознательно: один файл, нулевая установка, транзакции, полнотекстовый поиск — достаточно и для словаря, и для корпуса, и для обучения.
+
+База решает три задачи:
+
+1. **Единый словарь.** Все слова Русидо (лемма, основа, часть речи, тип склонения/спряжения, алломорфы, перевод, частотность) хранятся в одном месте и редактируются через `rusido dictionary`, а JSON-файлы из `data/lexicon/` становятся формой импорта/экспорта.
+2. **Корпус параллельных текстов.** Пары «русское предложение → русидское предложение» накапливаются в базе и становятся тестовым корпусом (README §11.5): валидация, поиск конструкций, статистика.
+3. **Обучение переводчика.** Таблицы пар слов и пар предложений — обучающие данные для будущей статистической/нейросетевой модели перевода (вместо чисто правилового подхода).
+
+Предлагаемая схема:
+
+```sql
+-- Словарь: все слова и переводы
+CREATE TABLE words (
+    id INTEGER PRIMARY KEY,
+    lemma_ru TEXT NOT NULL,        -- русская лемма
+    lemma_rusido TEXT NOT NULL,    -- лемма Русидо
+    stem TEXT NOT NULL,            -- основа Русидо
+    pos TEXT NOT NULL,             -- noun | verb | adj | pron | ...
+    stem_type TEXT,                -- vowel | palatal | cons_stem ...
+    allomorphs TEXT,               -- JSON: алломорфы основы
+    frequency INTEGER DEFAULT 0,   -- частотность из корпуса
+    grammar_version TEXT DEFAULT '1.0'
+);
+
+CREATE TABLE translations (
+    id INTEGER PRIMARY KEY,
+    word_id INTEGER NOT NULL REFERENCES words(id),
+    source_form TEXT NOT NULL,     -- исходная форма (рус.)
+    target_form TEXT NOT NULL,     -- форма Русидо
+    context TEXT                   -- пример употребления
+);
+
+-- Параллельный корпус
+CREATE TABLE corpus_sentences (
+    id INTEGER PRIMARY KEY,
+    source_ru TEXT NOT NULL,       -- русское предложение
+    target_rusido TEXT NOT NULL,   -- перевод Русидо
+    valid INTEGER,                 -- результат валидации
+    source TEXT                    -- origin файла / ручной ввод
+);
+
+-- Индексы для поиска и обучения
+CREATE INDEX idx_words_lemma ON words(lemma_ru);
+CREATE INDEX idx_translations_pair ON translations(source_form, target_form);
+```
+
+Интеграция с кодом: `Lexicon` получает второй бэкенд хранения (`LexiconStorage`: JSON или SQLite) с одинаковым интерфейсом, так что переводчик и валидатор не меняются. CLI из §8.5 работает с базой:
+
+```
+rusido dictionary add --lemma "читать" --stem "чита" --pos verb --infinitive "читати"
+rusido dictionary lookup "читать"
+rusido dictionary export dictionary.json
+rusido corpus add --ru "Я читаю книгу." --rusido "Я читам книгу."
+rusido corpus stats
+```
+
+При разработке важно: база создаётся и мигрирует автоматически при первом запуске; валидатор и морфологический движок по-прежнему должны работать без неё (только на JSON-лексиконе), чтобы проверка текстов Русидо не зависела от SQLite.
+
+
 ## **5. Структура проекта**
 
 Предлагаю название Python-пакета `rusido-tools`, импортируемое имя `rusido`.
@@ -654,6 +715,7 @@ rusido-tools/
 │       │   ├── loader.py
 │       │   ├── dictionary.py
 │       │   ├── schema.py
+│       │   ├── storage.py        # бэкенды хранения: JSON и SQLite (§4.6)
 │       │   └── lookup.py
 │       │
 │       └── evaluation/
@@ -674,6 +736,8 @@ rusido-tools/
 │   │   ├── numerals.yaml
 │   │   ├── prepositions.yaml
 │   │   └── syntax.yaml
+│   │
+│   ├── rusido.db              # SQLite: словарь, переводы, корпус (§4.6)
 │   │
 │   └── lexicon/
 │       ├── nouns.json
@@ -814,6 +878,9 @@ from dataclasses import dataclassfrom typing import Optional@dataclassclass Morp
 | `LexiconLoader` | Загрузка данных                |
 | `LexiconIndex`  | Индексация для быстрого поиска |
 | `LexiconLookup` | Поиск по лемме, основе и форме |
+| `LexiconStorage` | Абстрактный бэкенд хранения (JSON / SQLite) |
+| `SqliteStorage`  | Хранение словаря и корпуса в SQLite (§4.6) |
+| `CorpusStore`    | Параллельный корпус предложений в SQLite |
 
 ### **6.6. Evaluation — оценка качества**
 
@@ -925,8 +992,9 @@ rusido --help
 | `analyze`    | Морфологический разбор            |
 | `parse`      | Синтаксический разбор предложения |
 | `word`       | Информация о слове                |
-| `dictionary` | Работа со словарём                |
-| `stats`      | Статистика корпуса                |
+| `dictionary` | Работа со словарём (SQLite, §4.6)   |
+| `corpus`     | Параллельный корпус и статистика    |
+| `stats`      | Статистика корпуса                  |
 | `config`     | Настройки                         |
 | `version`    | Версия программы                  |
 
@@ -1092,6 +1160,20 @@ rusido validate text.rus --format markdown
 ```
 
 Таким образом, утилиту можно будет использовать как интерактивный инструмент, как проверяющий этап в CI/CD и как компонент других программ.
+
+### **8.7. Корпус и статистика**
+
+Команды работают с SQLite-базой из §4.6:
+
+```
+rusido corpus add --ru "Я читаю книгу." --rusido "Я читам книгу."
+rusido corpus import parallel_pairs.tsv
+rusido corpus search "читам"
+rusido corpus stats              # число пар, покрытие лексикона, доля валидных
+rusido stats                     # частотность слов по корпусу
+```
+
+Накопленные пары предложений — основа тестового корпуса (§11.5) и обучающих данных для статистического переводчика будущих версий.
 
 ## **9. Коды ошибок**
 
@@ -1273,7 +1355,7 @@ corpus/
     └── syntax.txt
 ```
 
-В перспективе этот корпус позволит не только проверять грамматику, но и оценивать качество перевода на реальных текстах.
+В перспективе этот корпус позволит не только проверять грамматику, но и оценивать качество перевода на реальных текстах. Хранилищем корпуса служит SQLite-база (§4.6): файлы в `corpus/` — форма импорта, база — рабочее состояние, на основе которого считается статистика и готовятся обучающие выборки.
 
 ## **12. Установка и конфигурация проекта**
 
@@ -1490,7 +1572,7 @@ python -m spacy download ru_core_news_sm
 
 **Rusido Corpus**
 
-Параллельные русско-русидские тексты, статистика словоупотребления, поиск грамматических конструкций и исследование частотности.
+Параллельные русско-русидские тексты, статистика словоупотребления, поиск грамматических конструкций и исследование частотности. Данные корпуса хранятся в SQLite-базе (§4.6) и используются для оценки качества перевода и обучения переводчика.
 
 [1秒未満で音声翻訳！ 無料アプリ『同時通訳』で英語⇔日本語の翻訳精度を検証してみた - アプリブ](https://images.openai.com/static-rsc-4/NlV4m_QjV82GsuppLvNLOe5J1SSmfPjq-YgpduuaDtF0VQc2A84RQbhfsZbFWxxa5Ki-7oesx4vC8gM5MAQO8aiT7IgFECZu0I9zeGXIhVzLeW1vV08rzXziUg3PNzNHggSG75XGqtuG_dl2WQOeQnFbfEYmlPZEJ6cr5SyQtqc?purpose=inline)
 
