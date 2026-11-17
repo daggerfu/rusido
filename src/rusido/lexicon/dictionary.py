@@ -25,6 +25,19 @@ POS_PARTICLE = "particle"
 POS_CONJ = "conj"
 POS_PREP = "prep"
 
+# Русские названия частей речи для CLI и Markdown-экспорта.
+POS_LABELS = {
+    POS_NOUN: "существительное",
+    POS_VERB: "глагол",
+    POS_ADJ: "прилагательное",
+    POS_PRON: "местоимение",
+    POS_NUM: "числительное",
+    POS_ADV: "наречие",
+    POS_PARTICLE: "частица",
+    POS_CONJ: "союз",
+    POS_PREP: "предлог",
+}
+
 # Внешние словари: data/lexicon/*.json, формат — список LexiconEntry (README.md, 4.5).
 EXTERNAL_LEXICON_DIR = Path(__file__).resolve().parents[3] / "data" / "lexicon"
 
@@ -74,6 +87,11 @@ class LexiconEntry:
                 f"неизвестный тип алломорфа '{kind}'; допустимы: "
                 f"{', '.join(ALLOMORPH_KINDS)}")
         self.allomorphs[kind] = normalize_word(stem)
+
+
+def _md_cell(value: str) -> str:
+    """Экранировать разделитель колонок Markdown-таблицы."""
+    return str(value).replace("|", "\\|").replace("\n", " ")
 
 
 def _n(lemma, stem, **kw):
@@ -200,6 +218,8 @@ DEFAULT_LEXICON: list[LexiconEntry] = [
     LexiconEntry("бистрейш", "бистрейш", POS_ADV),
     LexiconEntry("холодно", "холодно", POS_ADV),
     LexiconEntry("плохо", "плохо", POS_ADV),
+    LexiconEntry("более", "более", POS_ADV),
+    LexiconEntry("самий", "самий", POS_ADV),
     LexiconEntry("вчера", "вчера", POS_ADV),
     LexiconEntry("завтра", "завтра", POS_ADV),
     LexiconEntry("сегодня", "сегодня", POS_ADV),
@@ -340,6 +360,26 @@ class Lexicon:
     def to_json(self) -> str:
         return json.dumps([asdict(e) for e in self._by_lemma.values()],
                           ensure_ascii=False, indent=2)
+
+    def to_markdown(self) -> str:
+        """Экспорт лексикона в Markdown-таблицу (CLI: dictionary export)."""
+        lines = [
+            "# Лексикон Русидо",
+            "",
+            f"Записей: {len(self)}",
+            "",
+            "| Лемма | Основа | Часть речи | Тип основы "
+            "| Каноническая форма | Алломорфы | Перевод |",
+            "| --- | --- | --- | --- | --- | --- | --- |",
+        ]
+        for e in self._by_lemma.values():
+            allos = ", ".join(f"{k}: {v}" for k, v in e.allomorphs.items()) or "—"
+            cells = [
+                e.lemma, e.stem, POS_LABELS.get(e.pos, e.pos), e.stem_type,
+                e.source_form or "—", allos, e.ru_translation or "—",
+            ]
+            lines.append("| " + " | ".join(_md_cell(c) for c in cells) + " |")
+        return "\n".join(lines) + "\n"
 
     @classmethod
     def from_json(cls, text: str) -> "Lexicon":

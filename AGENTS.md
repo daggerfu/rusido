@@ -11,7 +11,7 @@
 
 Дополнительно: морфологический анализатор (`RusidoAnalyzer`), лексикон (`Lexicon`), CLI `rusido`.
 
-Проект находится на стадии **MVP**: переводчик использует **pymorphy3** (опционально, `rusido/core/nlp.py`) для разбора русских форм — лемма, падеж, число, лицо, время; при отсутствии библиотеки или выключенном флаге `use_nlp=False` работают собственные эвристики MVP. spaCy/NLTK не используются. Неизвестные слова орфографически нормализуются и снижают confidence. Есть `pyproject.toml` (установка `pip install -e .`, команда `rusido`); `Makefile` и `examples/` пока нет. CLI-модуль — `src/rusido/cli.py` (`translate`, `validate`, `corpus`, `dictionary`). SQLite-хранилище — `src/rusido/lexicon/storage.py` (`data/rusido.db` в .gitignore); YAML-грамматика — `data/grammar/grammar.yaml`. Базовый набор pytest-тестов есть в `tests/`.
+Проект находится на стадии **MVP**: переводчик использует **pymorphy3** (опционально, `rusido/core/nlp.py`) для разбора русских форм — лемма, падеж, число, лицо, время; при отсутствии библиотеки или выключенном флаге `use_nlp=False` работают собственные эвристики MVP. spaCy/NLTK не используются. Неизвестные слова орфографически нормализуются и снижают confidence. Есть `pyproject.toml` (установка `pip install -e .`, команда `rusido`); `Makefile` и `examples/` пока нет. CLI-модуль — `src/rusido/cli.py` (`translate`, `validate`, `corpus`, `dictionary list/export/import`; `list` фильтрует по `-p`, `-a`, `-s`, `-n`, экспорт поддерживает `--format md`). SQLite-хранилище — `src/rusido/lexicon/storage.py` (`data/rusido.db` в .gitignore); YAML-грамматика — `data/grammar/grammar.yaml`. Базовый набор pytest-тестов есть в `tests/`.
 
 ## Документация проекта
 

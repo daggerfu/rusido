@@ -1134,12 +1134,20 @@ rusido parse "Я читам книгу."
 ### **8.5. Работа со словарём**
 
 ```
-rusido word "книга"
-rusido dictionary lookup "читать"
-rusido dictionary search "книг"
-rusido dictionary add
-rusido dictionary export dictionary.json
+rusido dictionary list                         # первые 50 записей
+rusido dictionary list -p verb -a              # глаголы с алломорфами
+rusido dictionary list -s книг -n 0            # поиск по лемме/основе/переводу
+rusido dictionary list --format md -o lex.md   # список в Markdown
+rusido dictionary export lex.json              # экспорт в JSON (по умолчанию)
+rusido dictionary export --format md -o lex.md # экспорт в Markdown
+rusido dictionary import                       # импорт в SQLite
 ```
+
+`dictionary list` понимает `-p/--pos` (можно повторять), `-a/--allomorphs`,
+`-s/--search`, `-n/--limit` (`0` — все), `--format {text,md,json}` и `-o/--output`.
+По умолчанию читается встроенный лексикон; `--source db --db path.db` берёт
+записи из SQLite. Команды `word`, `lookup`, `search`, `add` из раннего плана
+пока не реализованы — их заменяет `dictionary list` с фильтрами.
 
 Последняя команда `dictionary add` должна открывать интерактивный режим добавления слова или принимать параметры, например:
 

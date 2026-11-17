@@ -100,6 +100,43 @@ def test_corpus_search(tmp_path, capsys):
     assert "Я читам книгу." in capsys.readouterr().out
 
 
+def test_dictionary_list_filters(capsys):
+    assert main(["dictionary", "list", "-p", "verb", "-a"]) == 0
+    out = capsys.readouterr().out
+    assert "идти" in out
+    assert "infinitive: и" in out
+    assert "показано: 2 из 2" in out
+
+
+def test_dictionary_list_search_and_limit(capsys):
+    assert main(["dictionary", "list", "-s", "книг", "-n", "1"]) == 0
+    out = capsys.readouterr().out
+    assert "книга" in out
+    assert "показано: 1 из" in out
+
+
+def test_dictionary_list_formats(tmp_path, capsys):
+    assert main(["dictionary", "list", "-p", "prep", "--format", "md",
+                 "-o", str(tmp_path / "prep.md")]) == 0
+    text = (tmp_path / "prep.md").read_text(encoding="utf-8")
+    assert text.startswith("# Лексикон Русидо")
+    assert "| предлог |" in text
+
+    assert main(["dictionary", "list", "-p", "prep", "--format", "json"]) == 0
+    import json
+    data = json.loads(capsys.readouterr().out)
+    assert any(e["lemma"] == "под" for e in data)
+
+
+def test_dictionary_export_markdown(tmp_path):
+    out = tmp_path / "lex.md"
+    assert main(["dictionary", "export", str(out), "--format", "md"]) == 0
+    text = out.read_text(encoding="utf-8")
+    assert text.startswith("# Лексикон Русидо")
+    assert "| Лемма | Основа |" in text
+    assert "алломорфы" in text.lower() or "Алломорфы" in text
+
+
 def test_dictionary_import_export(tmp_path):
     db = str(tmp_path / "d.db")
     out = tmp_path / "dict.json"
