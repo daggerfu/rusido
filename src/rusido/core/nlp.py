@@ -39,6 +39,7 @@ class RussianAnalysis:
     person: int | None = None    # 1 | 2 | 3
     tense: str | None = None     # past | present | future
     mood: str | None = None      # indicative | imperative
+    transitive: bool | None = None  # True — tran, False — intr, None — нет данных
 
 
 class RussianMorphAnalyzer:
@@ -97,6 +98,8 @@ class RussianMorphAnalyzer:
             tense = {"past": "past", "pres": "present", "futr": "future"}.get(
                 tag.tense or "")
         mood = {"indc": "indicative", "impr": "imperative"}.get(tag.mood or "")
+        # Переходность из словаря pymorphy3: tran → True, intr → False (D-026).
+        transitive = True if "tran" in tag else False if "intr" in tag else None
         return RussianAnalysis(
             lemma=p.normal_form,
             pos=pos,
@@ -105,4 +108,22 @@ class RussianMorphAnalyzer:
             person=RU_PERSON_TO_INT.get(tag.person or ""),
             tense=tense,
             mood=mood,
+            transitive=transitive,
         )
+
+    def is_transitive_verb(self, word: str) -> bool | None:
+        """Переходность глагола по словарю pymorphy3: `tran`/`intr`/None.
+
+        None означает, что данных нет или слово глаголом не является.
+        Перебираем все гипотезы: у омонимичных форм переходность может
+        различаться, и первая по частоте не всегда глагольная.
+        """
+        if self._morph is None:
+            return None
+        for p in self._morph.parse(word):
+            if p.tag.POS in {"VERB", "INFN"}:
+                if "tran" in p.tag:
+                    return True
+                if "intr" in p.tag:
+                    return False
+        return None

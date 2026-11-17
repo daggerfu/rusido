@@ -49,6 +49,18 @@ def test_accept_lemma_prefers_lexicon_parse():
     assert picked.number == "plural"
 
 
+def test_transitivity_from_pymorphy3():
+    # Тег tran/intr словаря нужен контекстному слою переводчика (D-026).
+    a = RussianMorphAnalyzer()
+    assert a.analyze("читаю").transitive is True
+    assert a.analyze("иду").transitive is False
+    for word in ("иду", "живу", "сплю"):
+        assert a.is_transitive_verb(word) is False
+    for word in ("читаю", "вижу", "открываю"):
+        assert a.is_transitive_verb(word) is True
+    assert a.is_transitive_verb("я") is None
+
+
 def test_prefer_case_resolves_syncretism():
     # pymorphy3 отдаёт «книги» как род. ед. по частоте; контекст меняет гипотезу.
     a = RussianMorphAnalyzer()

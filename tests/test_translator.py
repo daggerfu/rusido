@@ -28,6 +28,18 @@ def test_syncretism_nominative_without_context(translator):
     assert translator.translate("дверь").text == "двер"
 
 
+def test_intransitive_verb_does_not_create_object(translator):
+    # D-026: «идти/жить/спать» не открывают винительный объект по SVO.
+    assert translator.translate("я иду дом").text == "я идем дом"
+    assert translator.translate("он живет город").text == "он жит город"
+    assert translator.translate("я сплю собака").text == "я спам собак"
+
+
+def test_transitive_verb_still_creates_object(translator):
+    assert translator.translate("я читаю книгу").text == "я читам книгу"
+    assert translator.translate("я вижу собаку").text == "я видем собаку"
+
+
 def test_syncretism_accusative_after_verb(translator):
     # После переходного глагола (SVO) та же форма — объект → винительный.
     assert translator.translate("я читаю книги").text == "я читам книгиу"

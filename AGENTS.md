@@ -16,7 +16,9 @@
 ## Документация проекта
 
 - `README.md` — полная архитектурная концепция (архитектура, стек, API, CLI, коды ошибок, план этапов 1–4). Код ссылается на его разделы в docstring'ах.
-- `docs/decisions.md` — журнал решений по языку (ADR-стиль, D-001…D-012): спорные вопросы спецификации закрыты там, новые решения фиксируются там же с привязкой к версии грамматики.
+- `docs/decisions.md` — журнал решений по языку (ADR-стиль, D-001…D-023): спорные вопросы спецификации закрыты там, новые решения фиксируются там же с привязкой к версии грамматики.
+- `docs/bsa/` — комплект системного анализа (AS-IS, TO-BE, user stories, use cases); обновляется на вехах, внутри вехи актуальны `plan.md` и `TODO.md`.
+- `HISTORY.md` — журнал «в какой день что сделано» по итогам сессий; крупные вехи — отдельными заголовками.
 - `Rusido.md` — полная спецификация самого языка Русидо (алфавит, морфология, синтаксис). Код ссылается на её разделы.
 
 Грамматика языка (корневая формула `ROOT + NUMBER + CASE`):
@@ -40,7 +42,7 @@
 | `core/grammar.py` | `GrammarProfile`, `load_grammar` — загрузка формальной грамматики из `data/grammar/grammar.yaml` (тест `test_grammar_yaml` держит YAML и код синхронно) |
 | `core/tokens.py` | классификаторы внешних токенов (цифры, латиница, аббревиатуры, имена с дефисным показателем) — орфографическая оболочка Rusido.md §1.1 |
 | `validation/codes.py` | реестр диагностических кодов R001—R018 с категорией, условием и статусом `implemented`/`reserved` |
-| `lexicon/dictionary.py` | `Lexicon`, `LexiconEntry`, константы POS и типов основ (STEM_VOWEL/STEM_PALATAL, VERB_VOWEL/VERB_CONSONANT); загрузка/экспорт JSON; 535+ записей (bootstrap из `lexicon/bootstrap.py`) |
+| `lexicon/dictionary.py` | `Lexicon`, `LexiconEntry`, константы POS и типов основ (STEM_VOWEL/STEM_PALATAL, VERB_VOWEL/VERB_CONSONANT); загрузка/экспорт JSON; 620+ записей (bootstrap из `lexicon/bootstrap.py`) |
 | `morphology/nouns.py` | `inflect_noun`, константы числа/падежа |
 | `morphology/verbs.py` | спряжение, будущее, повелительное, условное |
 | `morphology/adjectives.py` | `build_adjective`, сравнительные степени (`более X` / `самий X`) |

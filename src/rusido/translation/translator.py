@@ -143,7 +143,9 @@ class RusidoTranslator:
         analysis = self._nlp.analyze(
             word,
             accept_lemma=lambda lemma: self.lexicon.has(normalize_word(lemma)),
-            prefer_case=_preferred_ru_case(previous, self.lexicon),
+            prefer_case=_preferred_ru_case(
+                previous, self.lexicon,
+                self._nlp.is_transitive_verb if self._nlp else None),
         ) if self._nlp else None
 
         lemma = RU_TO_LEMMA_OVERRIDES.get(word, normalize_word(word))
@@ -309,13 +311,15 @@ _RUSIDO_CASE_TO_GRAMMEME = {
 }
 
 
-def _preferred_ru_case(previous: tuple[str, ...],
-                       lexicon: Lexicon) -> str | None:
+def _preferred_ru_case(previous: tuple[str, ...], lexicon: Lexicon,
+                       is_transitive=None) -> str | None:
     """Контекстная гипотеза русского падежа для выбора разбора pymorphy3.
 
     Приоритет: управление предлога → объект после глагола (SVO) →
     подлежащее. Для «в/на» гипотезу оставляем pymorphy3: только форма
     существительного решает, статика это или направление (D-024).
+    Непереходный глагол (`intr` по словарю pymorphy3) не порождает
+    объект — после него гипотеза винительного падежа не предлагается (D-026).
     """
     if not previous:
         return _RUSIDO_CASE_TO_GRAMMEME[nouns.NOMINATIVE]
@@ -326,7 +330,7 @@ def _preferred_ru_case(previous: tuple[str, ...],
         return _RUSIDO_CASE_TO_GRAMMEME[nouns.DATIVE]
     if prev in _AMBIGUOUS_PREPOSITIONS:
         return None
-    if _likely_object("", previous, lexicon):
+    if _likely_object("", previous, lexicon, is_transitive):
         return _RUSIDO_CASE_TO_GRAMMEME[nouns.ACCUSATIVE]
     return _RUSIDO_CASE_TO_GRAMMEME[nouns.NOMINATIVE]
 
@@ -375,14 +379,25 @@ def _guess_ru_case(raw: str, word: str, previous: tuple[str, ...] = (),
 
 
 def _likely_object(word: str, previous: tuple[str, ...] = (),
-                   lexicon: Lexicon | None = None) -> bool:
-    """Признак объекта по позиции после глагола (базовый порядок SVO)."""
+                   lexicon: Lexicon | None = None,
+                   is_transitive=None) -> bool:
+    """Признак объекта по позиции после глагола (базовый порядок SVO).
+
+    `is_transitive` — опциональный предикат над русской формой глагола из
+    pymorphy3 (`tran`/`intr`). Непереходный глагол исключается: «иду»,
+    «живу», «сплю» не открывают винительный объект (D-026). Без NLP
+    остаётся лексиконно-окончанческая эвристика MVP.
+    """
     if not previous:
         return False
     prev = previous[-1]
     if prev in _GENITIVE_PREPOSITIONS or prev in _DATIVE_PREPOSITIONS \
             or prev in _COPULAS or prev in _FUTURE_AUXILIARIES:
         return False
+    if is_transitive is not None:
+        tran = is_transitive(prev)
+        if tran is not None:
+            return tran
     if lexicon is not None:
         entry = lexicon.lookup(normalize_word(prev))
         if entry is not None and entry.pos == POS_VERB:
