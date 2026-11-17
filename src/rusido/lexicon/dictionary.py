@@ -278,6 +278,13 @@ DEFAULT_LEXICON: list[LexiconEntry] = [
     LexiconEntry("ест", "ест", POS_VERB, stem_type=VERB_CONSONANT,
                  source_form="ест", meta={"invariant": True}),
     LexiconEntry("ну", "ну", POS_PARTICLE, meta={"kind": "impersonal"}),
+    # Приветствия — инвариантные междометия (Rusido.md §9.3:
+    # адаптированные слова включаются в словарь и не изменяются).
+    LexiconEntry("привет", "привет", POS_PARTICLE, meta={"kind": "greeting"}),
+    LexiconEntry("здравствуй", "здравствуй", POS_PARTICLE,
+                 meta={"kind": "greeting"}),
+    LexiconEntry("здравствуйте", "здравствуйте", POS_PARTICLE,
+                 meta={"kind": "greeting"}),
 ]
 DEFAULT_LEXICON = _with_bootstrap(DEFAULT_LEXICON)
 

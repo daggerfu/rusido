@@ -245,6 +245,19 @@ def test_service_word_overrides(translator):
     assert translator.translate("ещё").text == "ешо"
 
 
+def test_greetings_are_known_invariant(translator):
+    # Приветствия — адаптированные междометия (Rusido.md §9.3), а не внешние
+    # токены: распознаются в лексиконе, не меняются и не дают предупреждений.
+    assert translator.translate("Привет").text == "Привет"
+    assert translator.translate("привет").text == "привет"
+    assert translator.translate("Здравствуйте!").text == "Здравствуйте!"
+    assert translator.translate("Здравствуй, брат!").text == "Здравствуй, брат!"
+    result = translator.translate("Привет! Как дела?")
+    assert result.text == "Привет! Как дели?"
+    assert result.warnings == []
+    assert result.confidence == 1.0
+
+
 def test_syncretism_resolved_by_context(translator):
     # Снятие синкретизма падежей по контексту (D-024): гипотеза pymorphy3
     # выбирается управлением предлога / позицией объекта, а не частотой.
