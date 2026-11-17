@@ -49,6 +49,27 @@ def test_accept_lemma_prefers_lexicon_parse():
     assert picked.number == "plural"
 
 
+def test_prefer_case_resolves_syncretism():
+    # pymorphy3 отдаёт «книги» как род. ед. по частоте; контекст меняет гипотезу.
+    a = RussianMorphAnalyzer()
+    assert a.analyze("книги").case == "genitive"
+    assert a.analyze("книги", prefer_case="nomn").case == "nominative"
+    assert a.analyze("книги", prefer_case="accs").case == "accusative"
+    assert a.analyze("дверь", prefer_case="nomn").case == "nominative"
+
+
+def test_prefer_case_keeps_lemma_priority():
+    # Нужная лемма важнее совпадения падежа: «читаем» → VERB «читать».
+    a = RussianMorphAnalyzer()
+    picked = a.analyze(
+        "читаем",
+        accept_lemma=lambda lemma: lemma == "читать",
+        prefer_case="nomn",
+    )
+    assert picked.pos == "VERB"
+    assert picked.person == 1
+
+
 def test_case_mapping_ablt_to_dative():
     # творительный отображается на дательный (README.md §13)
     a = RussianMorphAnalyzer().analyze("книгой")

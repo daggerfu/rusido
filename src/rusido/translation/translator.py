@@ -15,7 +15,7 @@ from rusido.core.nlp import RussianAnalysis, RussianMorphAnalyzer
 from rusido.core.normalizer import normalize_word
 from rusido.lexicon.dictionary import (
     ALLO_IMPERATIVE, ALLO_INFINITIVE, ALLO_PAST, ALLO_PRESENT,
-    POS_ADJ, POS_NOUN, POS_NUM, POS_VERB, Lexicon,
+    POS_ADJ, POS_NOUN, POS_NUM, POS_PRON, POS_VERB, Lexicon,
 )
 from rusido.morphology import adjectives, nouns, numerals, verbs
 
@@ -138,9 +138,13 @@ class RusidoTranslator:
         """Вернуть форму Русидо либо None, если слово неизвестно."""
         word = raw.lower()
         capitalized = raw[0].isupper()
+        # Контекст слева задаёт предпочтительную гипотезу pymorphy3 (D-024):
+        # иначе «книги» разбираются как род. ед. независимо от предложения.
         analysis = self._nlp.analyze(
-            word, accept_lemma=lambda lemma: self.lexicon.has(
-                normalize_word(lemma))) if self._nlp else None
+            word,
+            accept_lemma=lambda lemma: self.lexicon.has(normalize_word(lemma)),
+            prefer_case=_preferred_ru_case(previous, self.lexicon),
+        ) if self._nlp else None
 
         lemma = RU_TO_LEMMA_OVERRIDES.get(word, normalize_word(word))
         entry = self.lexicon.lookup(lemma)
@@ -155,8 +159,18 @@ class RusidoTranslator:
                         capitalized)
 
         if entry.pos == POS_NOUN:
-            case = analysis.case if analysis and analysis.case \
-                else _guess_ru_case(raw, word, previous, self.lexicon)
+            # Управление Rusido (§8.6) отличается от русского: «у книги» —
+            # дательный, хотя pymorphy3 даёт родительный. Предлог задаёт
+            # падеж напрямую; «в/на» остаются на усмотрение гипотезы NLP.
+            prep_case = _preposition_rusido_case(previous)
+            if prep_case is not None:
+                case = prep_case
+            elif previous and previous[-1] in _GENITIVE_PREDICATES:
+                case = nouns.GENITIVE
+            elif analysis and analysis.case:
+                case = analysis.case
+            else:
+                case = _guess_ru_case(raw, word, previous, self.lexicon)
             number = analysis.number if analysis and analysis.number \
                 else _guess_ru_number(word, entry.pos)
             form = nouns.inflect_noun(entry.stem, number, case, entry.stem_type,
@@ -166,6 +180,13 @@ class RusidoTranslator:
         if entry.pos == POS_VERB:
             return _cap(self._verb_form(entry, word, analysis, following),
                         capitalized)
+
+        # Личные местоимения после дательных предлогов принимают косвенную
+        # форму (Rusido.md, 5.2 и 8.6): «у меня» → «у мне», «к тебе» → «к тебе».
+        if entry.pos == POS_PRON and entry.meta.get("case") == "nom":
+            oblique = _governed_oblique(entry, previous)
+            if oblique is not None:
+                return _cap(oblique, capitalized)
 
         # Местоимения, числительные, служебные — инвариантные формы.
         return _cap(entry.lemma if entry.source_form is None else entry.source_form,
@@ -252,6 +273,71 @@ _COPULAS = {"ест", "есть", "был", "была", "было", "были"}
 # После вспомогательного будущего существительное остаётся в именительном
 # (D-003): «будет книга», а не объект «будет книгу».
 _FUTURE_AUXILIARIES = {"буду", "будеш", "будет", "будем", "будете", "будут"}
+# Предикат отсутствия «нет» управляет родительным (Rusido.md, 8.4):
+# «У мне нет книго».
+_GENITIVE_PREDICATES = {"нет"}
+
+# Предлоги с неоднозначным русским управлением: статика (loct → дат. п.)
+# или направление (accs → вин. п.). Гипотезу выбирает pymorphy3 по форме
+# существительного, а не по самому предлогу (Rusido.md §8.6).
+_AMBIGUOUS_PREPOSITIONS = {"в", "на"}
+
+def _governed_oblique(entry, previous: tuple[str, ...]) -> str | None:
+    """Косвенная форма личного местоимения под управлением предлога (§5.2, §8.6).
+
+    Русский «у меня» строится родительным, но в Русидо «у» требует
+    дательный: «у мне». Поэтому именительное местоимение после дательного
+    предлога заменяется на словарную косвенную форму.
+    """
+    if not previous or previous[-1] not in _DATIVE_PREPOSITIONS:
+        return None
+    person, number = entry.meta.get("person"), entry.meta.get("number")
+    if person is None or number is None:
+        return None
+    return numerals.PERSONAL_OBLIQUE.get((person, number))
+
+
+# Падеж Русидо → русская граммема для `prefer_case` (README.md §13).
+_RUSIDO_CASE_TO_GRAMMEME = {
+    nouns.NOMINATIVE: "nomn",
+    nouns.ACCUSATIVE: "accs",
+    nouns.GENITIVE: "gent",
+    nouns.DATIVE: "datv",
+}
+
+
+def _preferred_ru_case(previous: tuple[str, ...],
+                       lexicon: Lexicon) -> str | None:
+    """Контекстная гипотеза русского падежа для выбора разбора pymorphy3.
+
+    Приоритет: управление предлога → объект после глагола (SVO) →
+    подлежащее. Для «в/на» гипотезу оставляем pymorphy3: только форма
+    существительного решает, статика это или направление (D-024).
+    """
+    if not previous:
+        return _RUSIDO_CASE_TO_GRAMMEME[nouns.NOMINATIVE]
+    prev = previous[-1]
+    if prev in _GENITIVE_PREPOSITIONS or prev in _GENITIVE_PREDICATES:
+        return _RUSIDO_CASE_TO_GRAMMEME[nouns.GENITIVE]
+    if prev in _DATIVE_PREPOSITIONS:
+        return _RUSIDO_CASE_TO_GRAMMEME[nouns.DATIVE]
+    if prev in _AMBIGUOUS_PREPOSITIONS:
+        return None
+    if _likely_object("", previous, lexicon):
+        return _RUSIDO_CASE_TO_GRAMMEME[nouns.ACCUSATIVE]
+    return _RUSIDO_CASE_TO_GRAMMEME[nouns.NOMINATIVE]
+
+
+def _preposition_rusido_case(previous: tuple[str, ...]) -> str | None:
+    """Падеж Русидо по управлению предлога (Rusido.md §8.6, D-009, D-013)."""
+    if not previous:
+        return None
+    prev = previous[-1]
+    if prev in _GENITIVE_PREPOSITIONS:
+        return nouns.GENITIVE
+    if prev in _DATIVE_PREPOSITIONS:
+        return nouns.DATIVE
+    return None
 
 
 def _guess_ru_case(raw: str, word: str, previous: tuple[str, ...] = (),

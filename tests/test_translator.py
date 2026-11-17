@@ -20,6 +20,36 @@ def test_noun_plural(translator):
     assert translator.translate("собаки").text == "собаки"
 
 
+def test_syncretism_nominative_without_context(translator):
+    # Частотная гипотеза pymorphy3 неверна без контекста (D-024):
+    # «книги» → род. ед., «дверь» → вин. ед.; подлежащее — именительный.
+    assert translator.translate("книги").text == "книги"
+    assert translator.translate("столы").text == "столи"
+    assert translator.translate("дверь").text == "двер"
+
+
+def test_syncretism_accusative_after_verb(translator):
+    # После переходного глагола (SVO) та же форма — объект → винительный.
+    assert translator.translate("я читаю книги").text == "я читам книгиу"
+    assert translator.translate("я вижу столы").text == "я видем столиу"
+    assert translator.translate("я открываю дверь").text == "я откривам дверу"
+
+
+def test_syncretism_subject_before_verb(translator):
+    # Подлежащее перед глаголом остаётся именительным, хоть pymorphy3
+    # видит в «дверь» винительный падеж.
+    assert translator.translate("дверь открыта").text == "двер открита"
+
+
+def test_preposition_governance_overrides_pymorphy3(translator):
+    # Управление Русидо (§8.6, D-009) отличается от русского: «у» требует
+    # дательного, хотя pymorphy3 даёт родительный.
+    assert translator.translate("у книги").text == "у книге"
+    # «в/на» неоднозначны: падеж определяет форма существительного.
+    assert translator.translate("в доме").text == "в доме"
+    assert translator.translate("на столе").text == "на столе"
+
+
 def test_preposition_pod_takes_dative(translator):
     # Rusido.md §8.6: под столом → под столе (статическое местоположение).
     assert translator.translate("под столом").text == "под столе"
@@ -171,3 +201,23 @@ def test_service_word_overrides(translator):
     assert translator.translate("чтобы").text == "штоби"
     assert translator.translate("который").text == "кторий"
     assert translator.translate("ещё").text == "ешо"
+
+
+def test_syncretism_resolved_by_context(translator):
+    # Снятие синкретизма падежей по контексту (D-024): гипотеза pymorphy3
+    # выбирается управлением предлога / позицией объекта, а не частотой.
+    assert translator.translate("Я читаю книги.").text == "Я читам книгиу."
+    assert translator.translate("Книги лежат на столе.").text.startswith("Книги ")
+    assert translator.translate("Я вижу брата.").text == "Я видем брату."
+
+
+def test_predicate_net_governs_genitive(translator):
+    # «нет» управляет родительным (Rusido.md, 8.4): книга → книго.
+    assert translator.translate("У меня нет книги.").text == "У мне нет книго."
+
+
+def test_pronoun_oblique_after_preposition(translator):
+    # Дательные предлоги требуют косвенной формы местоимения (§5.2, §8.6):
+    # русское «у меня/нас/них» → «у мне/нам/ним».
+    assert translator.translate("Я иду к тебе.").text == "Я идем к тебе."
+    assert translator.translate("У них нет собаки.").text == "У ним нет собако."

@@ -23,6 +23,10 @@ RU_NUMBER_TO_RUSIDO = {"sing": "singular", "plur": "plural"}
 
 RU_PERSON_TO_INT = {"1per": 1, "2per": 2, "3per": 3}
 
+# Русские граммемы падежа, которые переводчик может запросить как
+# предпочтительную гипотезу (снятие синкретизма, README.md §13).
+RU_CASE_GRAMMEMES = frozenset(RU_CASE_TO_RUSIDO)
+
 
 @dataclass
 class RussianAnalysis:
@@ -52,13 +56,23 @@ class RussianMorphAnalyzer:
     def available(self) -> bool:
         return self._morph is not None
 
-    def analyze(self, word: str,
-                accept_lemma=None) -> RussianAnalysis | None:
+    def analyze(self, word: str, accept_lemma=None, *,
+                prefer_case: str | None = None) -> RussianAnalysis | None:
         """Разобрать слово; None — если NLP недоступен или слово не разобрано.
 
-        accept_lemma — опциональный предикат на нормальную форму: позволяет
-        выбрать тот разбор, чья лемма есть в лексиконе (иначе pymorphy3
-        отдаёт первую по частотности гипотезу, напр. причастие «читаемый»).
+        pymorphy3 возвращает гипотезы в порядке убывания частотной оценки,
+        из-за чего синкретичные формы разбираются неверно: «книги» — род. ед.,
+        «столы» — вин. мн., «дверь» — вин. ед. (README.md §13). Приоритеты
+        выбора (от высокого к низкому):
+
+        1. лемма есть в лексиконе (`accept_lemma`);
+        2. падеж совпадает с контекстной гипотезой (`prefer_case`);
+        3. оценка pymorphy3.
+
+        `prefer_case` — русская граммема (`RU_CASE_GRAMMEMES`), вычисленная
+        переводчиком по контексту: объект после глагола → `accs`, подлежащее
+        → `nomn`, предлог → падеж его управления (D-024). Граммема не
+        *навязывается*: если подходящей гипотезы нет, остаётся частотная.
         """
         if self._morph is None:
             return None
@@ -70,11 +84,11 @@ class RussianMorphAnalyzer:
         full = [p for p in parses if "Abbr" not in p.tag]
         if full:
             parses = full
+        # Стабильные сортировки сохраняют порядок pymorphy3 внутри группы.
         if accept_lemma is not None:
-            for p in parses:
-                if accept_lemma(p.normal_form):
-                    parses = [p] + [q for q in parses if q is not p]
-                    break
+            parses.sort(key=lambda p: 0 if accept_lemma(p.normal_form) else 1)
+        if prefer_case is not None:
+            parses.sort(key=lambda p: 0 if (p.tag.case or "") == prefer_case else 1)
         p = parses[0]
         tag = p.tag
         pos = tag.POS or ""
