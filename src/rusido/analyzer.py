@@ -58,8 +58,8 @@ class RusidoAnalyzer:
                 number=nouns.PLURAL if num_suf == "и" else nouns.SINGULAR,
                 case=nouns.CASES_BY_SUFFIX[case_suf],
                 morphemes=[(root, "ROOT"),
-                           *((num_suf, "PLURAL") if num_suf else ()),
-                           *((case_suf, nouns.CASES_BY_SUFFIX[case_suf].upper())
+                           *(((num_suf, "PLURAL"),) if num_suf else ()),
+                           *(((case_suf, nouns.CASES_BY_SUFFIX[case_suf].upper()),)
                              if case_suf else ())],
                 valid=True,
             )
@@ -68,9 +68,10 @@ class RusidoAnalyzer:
         verb_stems, cons_stems = set(), set()
         for e in self.lexicon._by_lemma.values():
             if e.pos == POS_VERB:
-                verb_stems.add(e.stem)
+                verb_stems.update(e.all_stems())
                 if e.stem_type == "cons_stem":
-                    cons_stems.add(e.stem)
+                    cons_stems.update(s for s in e.all_stems()
+                                      if s and not nouns.is_vowel(s[-1]))
         vinfo = nouns.segment_verb(word, verb_stems, cons_stems)
         if vinfo is not None:
             item = AnalysisItem(word=word, pos="verb", root=vinfo["stem"],

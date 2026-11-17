@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict, dataclass, field
+from pathlib import Path
 
 from rusido.core.normalizer import normalize_word
 
@@ -23,6 +24,9 @@ POS_PARTICLE = "particle"
 POS_CONJ = "conj"
 POS_PREP = "prep"
 
+# Внешние словари: data/lexicon/*.json, формат — список LexiconEntry (README.md, 4.5).
+EXTERNAL_LEXICON_DIR = Path(__file__).resolve().parents[3] / "data" / "lexicon"
+
 # Типы основ существительных: гласная/согласная основа + мягкий знак.
 STEM_VOWEL = "vowel"      # книг(а), стол(∅)...: основа на гласную или обычную согласную
 STEM_PALATAL = "palatal"  # двер(ь): основа оканчивается на ь — показатель мягкости
@@ -30,6 +34,13 @@ STEM_PALATAL = "palatal"  # двер(ь): основа оканчивается 
 # Типы основ глаголов для вставки соединительной гласной «е» (Rusido.md, 7.2).
 VERB_VOWEL = "vowel_stem"     # чита-, дела-, люби-
 VERB_CONSONANT = "cons_stem"  # ид- → идем, идеш...
+
+# Алломорфы глагольной основы (Rusido.md, 7.1.1; D-015).
+ALLO_INFINITIVE = "infinitive"
+ALLO_PRESENT = "present"
+ALLO_PAST = "past"
+ALLO_IMPERATIVE = "imperative"
+ALLOMORPH_KINDS = (ALLO_INFINITIVE, ALLO_PRESENT, ALLO_PAST, ALLO_IMPERATIVE)
 
 
 @dataclass
@@ -41,15 +52,25 @@ class LexiconEntry:
     source_form: str | None = None  # каноническая форма Русидо (инфинитив, -ий ...)
     ru_translation: str | None = None
     meta: dict = field(default_factory=dict)
+    allomorphs: dict[str, str] = field(default_factory=dict)
+
+    def stem_for(self, kind: str) -> str:
+        """Основа для формы данного типа; по умолчанию — основная основа."""
+        return self.allomorphs.get(kind, self.stem)
+
+    def all_stems(self) -> set[str]:
+        """Все основы записи, включая алломорфы (для разбора форм)."""
+        return {self.stem, *self.allomorphs.values()}
 
 
 def _n(lemma, stem, **kw):
     return LexiconEntry(lemma=lemma, stem=stem, pos=POS_NOUN, **kw)
 
 
-def _v(lemma, stem, infinitive, stem_type=VERB_VOWEL):
+def _v(lemma, stem, infinitive, stem_type=VERB_VOWEL, allomorphs=None):
     return LexiconEntry(lemma=lemma, stem=stem, pos=POS_VERB,
-                        stem_type=stem_type, source_form=infinitive)
+                        stem_type=stem_type, source_form=infinitive,
+                        allomorphs=allomorphs or {})
 
 
 def _a(lemma, stem):
@@ -96,7 +117,10 @@ DEFAULT_LEXICON: list[LexiconEntry] = [
     _v("любить", "люби", "любити"),
     _v("говорить", "говори", "говорити"),
     _v("жить", "жи", "жити"),
-    _v("идти", "ид", "ити", stem_type=VERB_CONSONANT),
+    _v("идти", "ид", "ити", stem_type=VERB_CONSONANT, allomorphs={
+        ALLO_INFINITIVE: "и", ALLO_PRESENT: "ид",
+        ALLO_PAST: "ид", ALLO_IMPERATIVE: "ид",
+    }),
     _v("работать", "работа", "работати"),
     _v("изучать", "изуча", "изучати"),
     _v("быть", "буд", "будти", stem_type=VERB_CONSONANT),
@@ -145,12 +169,13 @@ DEFAULT_LEXICON: list[LexiconEntry] = [
     LexiconEntry("се", "се", POS_PRON, meta={"kind": "refl-passive"}),
     # --- Числительные (Rusido.md, раздел 6) ---
     *[LexiconEntry(name, name, POS_NUM) for name in [
-        "нол", "одн", "два", "три", "четир", "пят", "шест", "сем", "восем", "девят", "десят",
-        "однадек", "дванадек", "тринадек", "четирнадек", "пятнадек",
+        "нол", "одн", "два", "три", "четир", "пят", "шест", "сем", "восем", "девят",
+        "десят", "однадек", "дванадек", "тринадек", "четирнадек", "пятнадек",
         "шестнадек", "семнадек", "восемнадек", "девятнадек",
         "двадек", "тридек", "четирдек", "пятдек", "шестдек", "семдек", "восемдек", "девятдек",
-        "сто", "двесто", "тристо", "четирсто", "пятсто",
-        "однтис", "дватис", "тритис", "четиртис", "пятис",
+        "сто", "двасто", "тристо", "четирсто", "пятсто", "шестсто", "семсто",
+        "восемсто", "девятсто", "однтис", "дватис", "тритис", "четиртис",
+        "пятис", "шестис", "семтис", "восемтис", "девятис",
     ]],
     # --- Наречия, частицы, союзы, предлоги (Rusido.md, 8.6—8.8) ---
     LexiconEntry("уже", "уже", POS_ADV),
@@ -197,15 +222,35 @@ DEFAULT_LEXICON: list[LexiconEntry] = [
 DEFAULT_LEXICON = _with_bootstrap(DEFAULT_LEXICON)
 
 
+def load_external_entries(directory: Path | None = None) -> list[LexiconEntry]:
+    """Загрузить дополнительные записи из `data/lexicon/*.json`.
+
+    Отсутствующий каталог — нормальная ситуация (пакет работает и без
+    внешних словарей). Битый файл — ошибка конфигурации, её не скрываем.
+    """
+    folder = directory or EXTERNAL_LEXICON_DIR
+    if not folder.is_dir():
+        return []
+    entries: list[LexiconEntry] = []
+    for path in sorted(folder.glob("*.json")):
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, list):
+            raise ValueError(f"{path}: ожидается список записей лексикона")
+        entries.extend(LexiconEntry(**item) for item in data)
+    return entries
 
 
 class Lexicon:
     """Лексикон Русидо: поиск по лемме, основе и словоформе."""
 
-    def __init__(self, entries: list[LexiconEntry] | None = None):
+    def __init__(self, entries: list[LexiconEntry] | None = None,
+                 load_external: bool = True):
         self._by_lemma: dict[str, LexiconEntry] = {}
         self._forms: dict[str, LexiconEntry] = {}
-        for entry in entries if entries is not None else DEFAULT_LEXICON:
+        if entries is None:
+            entries = DEFAULT_LEXICON + (load_external_entries()
+                                         if load_external else [])
+        for entry in entries:
             self.add(entry)
 
     def add(self, entry: LexiconEntry) -> None:
@@ -215,10 +260,19 @@ class Lexicon:
         entry.stem = normalize_word(entry.stem)
         if entry.source_form is not None:
             entry.source_form = normalize_word(entry.source_form)
+        if entry.allomorphs:
+            entry.allomorphs = {kind: normalize_word(stem)
+                                for kind, stem in entry.allomorphs.items()}
         self._by_lemma.setdefault(entry.lemma, entry)
+        if entry.source_form is not None:
+            self._forms.setdefault(entry.source_form, entry)
 
     def lookup(self, lemma: str) -> LexiconEntry | None:
         return self._by_lemma.get(lemma)
+
+    def lookup_form(self, form: str) -> LexiconEntry | None:
+        """Найти запись по канонической словоформе Русидо (инфинитив, -ий...)."""
+        return self._forms.get(normalize_word(form))
 
     def has(self, lemma: str) -> bool:
         return lemma in self._by_lemma

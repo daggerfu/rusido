@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from rusido.core.nlp import RussianAnalysis, RussianMorphAnalyzer
 from rusido.core.normalizer import normalize_word
 from rusido.lexicon.dictionary import (
+    ALLO_IMPERATIVE, ALLO_INFINITIVE, ALLO_PAST, ALLO_PRESENT,
     POS_ADJ, POS_NOUN, POS_NUM, POS_VERB, Lexicon,
 )
 from rusido.morphology import adjectives, nouns, numerals, verbs
@@ -91,23 +92,32 @@ class RusidoTranslator:
                         warnings: list[str]) -> tuple[str, tuple[int, int]]:
         # Сохраняем пунктуацию и пробелы: разбиваем строку на «слова» и «шум».
         parts = re.split(r"([а-яёьъА-ЯЁЬЪ]+)", line)
+        words = [p for p in parts if p and _WORD_RE.fullmatch(p)]
         total = hits = 0
+        word_index = 0
         out = []
         for part in parts:
             if not part or not _WORD_RE.fullmatch(part):
                 out.append(part)
                 continue
             total += 1
-            word_out = self._translate_word(part, warnings)
+            previous = tuple(w.lower() for w in
+                             words[max(0, word_index - 2):word_index])
+            following = tuple(w.lower() for w in
+                              words[word_index + 1:word_index + 3])
+            word_out = self._translate_word(part, warnings, previous, following)
             if word_out is not None:
                 hits += 1
                 out.append(word_out)
             else:
                 warnings.append(f"неизвестное слово: {part}")
                 out.append(normalize_word(part))
+            word_index += 1
         return "".join(out), (total, hits)
 
-    def _translate_word(self, raw: str, warnings: list[str]) -> str | None:
+    def _translate_word(self, raw: str, warnings: list[str],
+                        previous: tuple[str, ...] = (),
+                        following: tuple[str, ...] = ()) -> str | None:
         """Вернуть форму Русидо либо None, если слово неизвестно."""
         word = raw.lower()
         capitalized = raw[0].isupper()
@@ -129,107 +139,172 @@ class RusidoTranslator:
 
         if entry.pos == POS_NOUN:
             case = analysis.case if analysis and analysis.case \
-                else _guess_ru_case(raw, word)
+                else _guess_ru_case(raw, word, previous, self.lexicon)
             number = analysis.number if analysis and analysis.number \
-                else _guess_ru_number(word)
+                else _guess_ru_number(word, entry.pos)
             form = nouns.inflect_noun(entry.stem, number, case, entry.stem_type,
                                       grammar=self.grammar)
             return _cap(form, capitalized)
 
         if entry.pos == POS_VERB:
-            return _cap(self._verb_form(entry, word, analysis), capitalized)
+            return _cap(self._verb_form(entry, word, analysis, following),
+                        capitalized)
 
         # Местоимения, числительные, служебные — инвариантные формы.
         return _cap(entry.lemma if entry.source_form is None else entry.source_form,
                     capitalized)
 
     def _verb_form(self, entry, ru_word: str,
-                   analysis: RussianAnalysis | None = None) -> str:
+                   analysis: RussianAnalysis | None = None,
+                   following: tuple[str, ...] = ()) -> str:
         """Выбор формы глагола: сначала признаки NLP, затем эвристики MVP."""
-        stem, stem_type = entry.stem, entry.stem_type
-        inf = entry.source_form or verbs.infinitive(stem)
+        stem_type = entry.stem_type
+        # Инфинитивная основа может отличаться от основной (Rusido.md, 7.1.1):
+        # ити → и- (инфинитив), ид- (остальные формы).
+        inf = entry.source_form or verbs.infinitive(
+            entry.stem_for(ALLO_INFINITIVE))
 
         # Признаки из pymorphy3 (если доступны) — точнее эвристик.
+        # Повелительное проверяем вне блока tense: pymorphy3 не ставит ему время.
+        if analysis is not None and analysis.mood == "imperative":
+            return verbs.imperative(
+                entry.stem_for(ALLO_IMPERATIVE),
+                plural=analysis.number == "plural", stem_type=stem_type)
+
         if analysis is not None and analysis.tense:
             if analysis.tense == "past" and analysis.number:
-                return verbs.conjugate_past(stem, analysis.number,
+                return verbs.conjugate_past(entry.stem_for(ALLO_PAST),
+                                            analysis.number,
                                             stem_type=stem_type)
             if analysis.tense == "future" and not ru_word.startswith("буд"):
                 return verbs.conjugate_future(
                     analysis.person or 1, analysis.number or "singular", inf)
-            if analysis.mood == "imperative":
-                return verbs.imperative(
-                    stem, plural=analysis.number == "plural", stem_type=stem_type)
             if analysis.tense == "present" and analysis.person and analysis.number:
                 return verbs.conjugate_present(
-                    stem, analysis.person, analysis.number, stem_type,
-                    grammar=self.grammar)
+                    entry.stem_for(ALLO_PRESENT), analysis.person,
+                    analysis.number, stem_type, grammar=self.grammar)
 
         # Прошедшее время: читал/читали, писал...
         if re.search(r"([аясь]|или)$", ru_word) and len(ru_word) > 3 \
                 and not ru_word.endswith("ть"):
-            past_stem = _ru_past_stem(ru_word)
-            number = "plural" if ru_word.endswith(("и",)) else "singular"
-            # основа Русидо берётся из словаря, окончание — из числа
-            return verbs.conjugate_past(stem, number) if False else \
-                _past_with_prefix(ru_word, stem, number, stem_type)
+            number = "plural" if ru_word.endswith("и") else "singular"
+            return _past_with_prefix(ru_word, entry.stem_for(ALLO_PAST),
+                                     number, stem_type)
 
         # Инфинитив: читать, писать...
         if ru_word.endswith("ть") or ru_word.endswith("ти"):
             return inf
 
-        # Будущее: буду/будешь/будем + инфинитив
+        # Будущее: личная форма будти + инфинитив основного глагола (7.4).
+        # Если инфинитив следует сразу, вспомогательный остаётся без «будти»:
+        # буду идти → будем ити, а не «будем будти ити».
         if ru_word.startswith("буд"):
             person, number = _future_person_number(ru_word)
+            if following and self._is_verb_infinitive(following[0]):
+                return verbs.future_auxiliary(person, number)
             return verbs.conjugate_future(person, number, inf)
 
         # Повелительное: читайте, читай, пиши...
-        if ru_word.endswith("те") and not ru_word.endswith("ете-те"):
-            pass  #handled below by imperative heuristic
         if _looks_imperative(ru_word):
             plural = ru_word.endswith("ите") or ru_word.endswith("айте") \
                 or ru_word.endswith("йте")
-            return verbs.imperative(stem, plural=plural, stem_type=stem_type)
+            return verbs.imperative(entry.stem_for(ALLO_IMPERATIVE),
+                                    plural=plural, stem_type=stem_type)
 
         # Настоящее время: лицо по русскому окончанию
         person, number = _present_person_number(ru_word)
-        return verbs.conjugate_present(stem, person, number, stem_type)
+        return verbs.conjugate_present(entry.stem_for(ALLO_PRESENT),
+                                       person, number, stem_type)
+
+    def _is_verb_infinitive(self, ru_word: str) -> bool:
+        """Следующее слово — русский инфинитив глагола из лексикона."""
+        if not ru_word.endswith(("ть", "ти")):
+            return False
+        entry = self.lexicon.lookup(normalize_word(ru_word))
+        return entry is not None and entry.pos == POS_VERB
 
 
 def _cap(form: str, capitalize: bool) -> str:
     return (form[0].upper() + form[1:]) if capitalize and form else form
 
 
-def _guess_ru_case(raw: str, word: str) -> str:
-    """Эвристика падежа по русскому окончанию (для MVP)."""
+# Управление предлогов по Rusido.md, 8.6 (см. также D-009).
+_GENITIVE_PREPOSITIONS = {"из", "от", "без", "для", "од", "до"}
+_DATIVE_PREPOSITIONS = {"у", "к", "ко", "с", "о", "об"}
+_COPULAS = {"ест", "есть", "был", "была", "было", "были"}
+# После вспомогательного будущего существительное остаётся в именительном
+# (D-003): «будет книга», а не объект «будет книгу».
+_FUTURE_AUXILIARIES = {"буду", "будеш", "будет", "будем", "будете", "будут"}
+
+
+def _guess_ru_case(raw: str, word: str, previous: tuple[str, ...] = (),
+                   lexicon: Lexicon | None = None) -> str:
+    """Эвристика падежа: русское окончание + минимальный контекст слева.
+
+    Полный разбор делает pymorphy3; здесь различаются только те случаи,
+    которые выводятся из окончания и предыдущего слова (README.md, 3.1).
+    """
+    if previous:
+        prep = previous[-1]
+        if prep in _GENITIVE_PREPOSITIONS:
+            return nouns.GENITIVE
+        if prep in _DATIVE_PREPOSITIONS:
+            return nouns.DATIVE
+
     if word.endswith(("а", "я")):
-        return nouns.ACCUSATIVE if _likely_object(word) else nouns.GENITIVE
+        # Раньше здесь безусловно брался родительный; по SVO слово после
+        # глагола — объект, иначе именительный (README.md, 1 и 3.1).
+        return nouns.ACCUSATIVE if _likely_object(word, previous, lexicon) \
+            else nouns.NOMINATIVE
     if word.endswith(("у", "ю")):
         return nouns.ACCUSATIVE
-    if word.endswith(("е",)):
+    if word.endswith("е"):
         return nouns.DATIVE
     if word.endswith(("ом", "ем", "ями", "ами")):
-        return nouns.DATIVE  # творительный отображается на дательный (README 13)
+        # Творительного падежа в Русидо нет: он передаётся дательным (D-013).
+        return nouns.DATIVE
     if word.endswith(("ов", "ев", "ей")):
         return nouns.GENITIVE
     return nouns.NOMINATIVE
 
 
-def _likely_object(word: str) -> bool:
-    return False
+def _likely_object(word: str, previous: tuple[str, ...] = (),
+                   lexicon: Lexicon | None = None) -> bool:
+    """Признак объекта по позиции после глагола (базовый порядок SVO)."""
+    if not previous:
+        return False
+    prev = previous[-1]
+    if prev in _GENITIVE_PREPOSITIONS or prev in _DATIVE_PREPOSITIONS \
+            or prev in _COPULAS or prev in _FUTURE_AUXILIARIES:
+        return False
+    if lexicon is not None:
+        entry = lexicon.lookup(normalize_word(prev))
+        if entry is not None and entry.pos == POS_VERB:
+            return True
+    # Fallback для глаголов, которых нет в лексиконе: русские личные окончания.
+    return bool(re.search(r"(ешь|ишь|ет|ит|ем|им|ете|ите|ут|ют|ат|ят|л|ла|ли|у|ю)$",
+                          prev))
 
 
-def _guess_ru_number(word: str) -> str:
-    if word.endswith(("ы", "и", "ов", "ев")) and word not in ("он",):
-        # грубая оценка: окончание мн. ч. русского
-        if word.endswith(("ы", "и")):
-            return nouns.PLURAL
+# Окончания, которые выглядят как -и/-ы, но не относятся к существительным:
+# прошедшее и повелительное глаголов, прилагательные и местоимения.
+_NON_NOUN_PLURAL_ENDINGS = ("ли", "йте", "ите", "ые", "ие", "ыми", "ими")
+
+
+def _guess_ru_number(word: str, pos: str = POS_NOUN) -> str:
+    """Число по русскому окончанию; применяется только к существительным.
+
+    Без pymorphy3 надёжно различаются лишь `ы/и` у nouns; `-ов/-ев` — это
+    обычно родительный падеж, а `-а/-я` может быть как ед., так и мн. ч.,
+    поэтому такие слова остаются единственным числом (README.md, 3.1).
+    """
+    if pos != POS_NOUN or word in ("он", "она", "оно", "они"):
+        return nouns.SINGULAR
+    if word.endswith(_NON_NOUN_PLURAL_ENDINGS):
+        return nouns.SINGULAR
+    if word.endswith(("ы", "и")):
+        return nouns.PLURAL
     return nouns.SINGULAR
-
-
-def _ru_past_stem(ru_word: str) -> str:
-    m = re.match(r"(.*?)(?:л|ла|ло|ли)$", ru_word)
-    return normalize_word(m.group(1)) if m else normalize_word(ru_word)
 
 
 def _past_with_prefix(ru_word: str, rusido_stem: str, number: str,

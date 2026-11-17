@@ -13,7 +13,9 @@ from __future__ import annotations
 
 from rusido.exceptions import InvalidFeatureError
 from rusido.lexicon.dictionary import VERB_CONSONANT, VERB_VOWEL
-from rusido.morphology.nouns import is_vowel
+from rusido.morphology.nouns import (
+    IMPERATIVE_CONSONANT, IMPERATIVE_PLURAL, IMPERATIVE_VOWEL, is_vowel,
+)
 
 PRESENT_SG = ("м", "ш", "т")
 PRESENT_PL = ("ми", "те", "ни")
@@ -84,11 +86,17 @@ def conjugate_past(stem: str, number: str = "singular",
     raise InvalidFeatureError(f"неизвестное число: {number!r}")
 
 
-def conjugate_future(person: int, number: str, infinitive_form: str) -> str:
+def future_auxiliary(person: int, number: str) -> str:
+    """Личная форма вспомогательного `будти` (Rusido.md, 7.2 и 7.4)."""
     key = (person, "sg" if number == "singular" else "pl")
     if key not in FUTURE_FORMS:
-        raise InvalidFeatureError(f"недопустимая комбинация: лицо={person}, число={number!r}")
-    return FUTURE_FORMS[key] + " " + infinitive_form
+        raise InvalidFeatureError(
+            f"недопустимая комбинация: лицо={person}, число={number!r}")
+    return FUTURE_FORMS[key]
+
+
+def conjugate_future(person: int, number: str, infinitive_form: str) -> str:
+    return future_auxiliary(person, number) + " " + infinitive_form
 
 
 def imperative(stem: str, plural: bool = False, stem_type: str = "vowel_stem") -> str:
@@ -98,10 +106,10 @@ def imperative(stem: str, plural: bool = False, stem_type: str = "vowel_stem") -
     Множественное число: ед. форма повелительного + те (идите, читайте, делайте).
     """
     if stem_type == VERB_CONSONANT or (stem and not is_vowel(stem[-1])):
-        form = stem + "и"
+        form = stem + IMPERATIVE_CONSONANT
     else:
-        form = stem + "й"
-    return form + "те" if plural else form
+        form = stem + IMPERATIVE_VOWEL
+    return form + IMPERATIVE_PLURAL if plural else form
 
 
 def conditional(stem: str, number: str = "singular") -> str:

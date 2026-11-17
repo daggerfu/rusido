@@ -1,7 +1,7 @@
 """Валидатор Русидо (README.md, разделы 3.2, 9; Rusido.md, разделы 1—10).
 
 Проверяет текст по уровням: орфография → лексика → морфология → синтаксис.
-Каждая диагностика имеет стабильный код ошибки (R001—R016).
+Каждая диагностика имеет стабильный код ошибки (R001—R017).
 """
 
 from __future__ import annotations
@@ -96,7 +96,7 @@ class RusidoValidator:
             warnings.extend(sent_warnings)
 
         if self.strict and not text.endswith((".", "!", "?")) and text.strip():
-            warnings.append(Diagnostic("R007", "warning",
+            warnings.append(Diagnostic("R017", "warning",
                                        "текст не заканчивается знаком препинания"))
 
         return ValidationReport(valid=not errors, errors=errors,
@@ -129,13 +129,15 @@ class RusidoValidator:
                 "R006", "error",
                 f"запрещённая буква '{bad[0]}'",
                 suggestion=fixed, line=line, column=column))
-            return diags
-
-        low = word.lower()
+            # Нормализованная форма может быть словарной или разбираться
+            # морфологией — проверяем её дальше, не останавливаясь на R006.
+            low = fixed.lower()
+        else:
+            low = word.lower()
         unknown_letters = [ch for ch in low if ch not in alphabet]
         if unknown_letters:
             diags.append(Diagnostic(
-                "R007", "error",
+                "R018", "error",
                 f"символ вне алфавита: '{unknown_letters[0]}'",
                 line=line, column=column))
             return diags
@@ -151,9 +153,7 @@ class RusidoValidator:
             return diags
 
         # 2. Лексика: слово известно как лемма или каноническая форма (R005)
-        if self.lexicon.has(low):
-            return diags
-        if any(e.source_form == low for e in self._entries()):
+        if self.lexicon.has(low) or self.lexicon.lookup_form(low) is not None:
             return diags
 
         # 3. Морфология: проба разобрать форму по схеме ROOT+NUMBER+CASE и т.п.
@@ -198,7 +198,8 @@ class RusidoValidator:
                             f"несогласованность подлежащего и сказуемого: "
                             f"'{subj}' / '{w}'",
                             suggestion=expected, line=lineno))
-                break  # одно сказуемое на уровне MVP
+                # Проверяем каждое сказуемое: в предложении их может быть
+                # несколько (сочинение, сложное предложение).
 
         # R001 для будущего времени: будем/будеш/...
         for i, w in enumerate(words):
@@ -212,28 +213,30 @@ class RusidoValidator:
                         f"несогласованность подлежащего и вспомогательного '{w}'",
                         line=lineno))
 
-        # R015 — числительное и число существительного (Rusido.md, 6.5)
-        for i, w in enumerate(words):
-            entry = self.lexicon.lookup(w)
-            if entry and entry.pos == POS_NUM and w.isdigit() is False \
-                    and i + 1 < len(words):
-                nxt = self._known_noun_form(words[i + 1])
-                if nxt is not None:
-                    value = _NUMERALS.get(w)
-                    if value is not None:
-                        need_plural = value >= 2
-                        has_plural = nxt["number"] == "plural"
-                        if need_plural != has_plural:
-                            stem = nxt["root"].rstrip("ь")
-                            expected = nouns.inflect_noun(
-                                stem,
-                                "plural" if need_plural else "singular",
-                                nxt["case"], grammar=self.grammar)
-                            errors.append(Diagnostic(
-                                "R015", "error",
-                                f"нарушение правила числа после числительного "
-                                f"'{w}': '{words[i + 1]}'",
-                                suggestion=expected, line=lineno))
+        # R015 — числительное и число существительного (Rusido.md, 6.5).
+        # Значение берётся по всему составному числительному, а не по
+        # последнему слову: «двадек одн столи», но «сто одн столи».
+        i = 0
+        while i < len(words):
+            value, end = self._numeral_phrase_value(words, i)
+            if value is None or end >= len(words):
+                i += 1
+                continue
+            nxt = self._known_noun_form(words[end])
+            if nxt is not None:
+                need_plural = value != 1
+                has_plural = nxt["number"] == "plural"
+                if need_plural != has_plural:
+                    stem = nxt["root"].rstrip("ь")
+                    expected = nouns.inflect_noun(
+                        stem, "plural" if need_plural else "singular",
+                        nxt["case"], grammar=self.grammar)
+                    errors.append(Diagnostic(
+                        "R015", "error",
+                        f"нарушение правила числа после числительного "
+                        f"'{' '.join(words[i:end])}': '{words[end]}'",
+                        suggestion=expected, line=lineno))
+            i = end + 1
 
         # R008 — прилагательное перед существительным (Rusido.md, 8.2)
         adj_stems = self._adj_stems()
@@ -260,15 +263,33 @@ class RusidoValidator:
         return {e.stem for e in self._entries() if e.pos == POS_ADJ}
 
     def _verb_data(self):
+        # Индексируем все алломорфы (Rusido.md, 7.1.1): ити → и / ид.
         stems, cons, inv = set(), set(), set()
         for e in self._entries():
             if e.pos == POS_VERB:
-                stems.add(e.stem)
+                stems.update(e.all_stems())
                 if e.stem_type == "cons_stem":
-                    cons.add(e.stem)
+                    cons.update(s for s in e.all_stems()
+                                if s and not nouns.is_vowel(s[-1]))
                 if e.meta.get("invariant"):
                     inv.add(e.lemma)
         return stems, cons, inv
+
+    def _numeral_phrase_value(self, words: list[str],
+                              start: int) -> tuple[int | None, int]:
+        """Сумма подряд идущих числительных и индекс следующего слова."""
+        total, i = 0, start
+        while i < len(words):
+            word = words[i]
+            value = NUMERAL_VALUES.get(word)
+            entry = self.lexicon.lookup(word)
+            if value is None or entry is None or entry.pos != POS_NUM:
+                break
+            total += value
+            i += 1
+        if i == start:
+            return None, start
+        return total, i
 
     def _known_noun_form(self, word: str) -> dict | None:
         seg = nouns.segment_noun(word, self._noun_stems(), self.grammar)
@@ -310,22 +331,15 @@ class RusidoValidator:
         return best
 
 
-CASE_TO_NAME = {"": "nominative", "у": "accusative", "о": "genitive", "е": "dative"}
-nouns.CASES_BY_SUFFIX = dict(nouns.CASE_SUFFIXES)
-nouns.CASES_BY_SUFFIX[""] = nouns.NOMINATIVE
-nouns.CASE_SUFFIXES_INV = {v: k for k, v in nouns.CASE_SUFFIXES.items()}
-
 _PRONOUN_NOMINATIVE = {
     "я": (1, "sg"), "ти": (2, "sg"), "он": (3, "sg"),
     "ми": (1, "pl"), "ви": (2, "pl"), "они": (3, "pl"),
 }
 
-_NUMERALS = {}
 try:
-    from rusido.morphology.numerals import CARDINALS as _CARDINALS
-    _NUMERALS.update({v: k for k, v in _CARDINALS.items()})
+    from rusido.morphology.numerals import NUMERAL_VALUES
 except Exception:  # pragma: no cover
-    pass
+    NUMERAL_VALUES = {}
 
 
 def _pronoun_agreement(word: str) -> tuple[int | None, str | None]:

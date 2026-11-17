@@ -1,5 +1,7 @@
 """Тесты SQLite-хранилища (README.md §4.6)."""
 
+import json
+
 import pytest
 
 from rusido import Lexicon
@@ -46,6 +48,20 @@ def test_export_lexicon_roundtrip(storage):
     entry = lexicon.lookup("читать")
     assert entry.stem == "чита"
     assert entry.pos == "verb"
+
+
+def test_allomorphs_roundtrip(storage):
+    entry = LexiconEntry(
+        lemma="идти", stem="ид", pos="verb", stem_type="cons_stem",
+        allomorphs={"infinitive": "и", "present": "ид",
+                    "past": "ид", "imperative": "ид"},
+    )
+    storage.upsert_word(entry)
+    assert json.loads(storage.lookup("идти")["allomorphs"]) == entry.allomorphs
+
+    restored = storage.export_lexicon().lookup("идти")
+    assert restored.allomorphs == entry.allomorphs
+    assert restored.stem_for("infinitive") == "и"
 
 
 def test_add_and_search_corpus(storage):

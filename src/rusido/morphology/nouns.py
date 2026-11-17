@@ -24,6 +24,8 @@ DATIVE = "dative"
 
 CASES = (NOMINATIVE, ACCUSATIVE, GENITIVE, DATIVE)
 CASE_SUFFIXES = {NOMINATIVE: "", ACCUSATIVE: "у", GENITIVE: "о", DATIVE: "е"}
+CASES_BY_SUFFIX = {v: k for k, v in CASE_SUFFIXES.items()}
+CASE_SUFFIXES_INV = CASES_BY_SUFFIX  # обратное преобразование для валидатора
 
 VOWELS = "аеиюояэ"
 
@@ -127,6 +129,12 @@ PRESENT_SUFFIXES = {"м": (1, "singular"), "ш": (2, "singular"), "т": (3, "sin
 
 PAST_SUFFIXES = {"л": "singular", "ли": "plural"}
 
+# Повелительное (Rusido.md, 7.5): основа + и/й, мн. ч. + те.
+# Используются и генератором (verbs.imperative), и разбором формы.
+IMPERATIVE_CONSONANT = "и"
+IMPERATIVE_VOWEL = "й"
+IMPERATIVE_PLURAL = "те"
+
 
 def segment_verb(form: str, stems: set[str],
                  consonant_stems: set[str] | None = None,
@@ -171,22 +179,24 @@ def segment_verb(form: str, stems: set[str],
                 return {"stem": rest[:-1], "tense": "present",
                         "person": p, "number": n, "epenthetic": True}
 
-    # Повелительное: чита+й, ид+и; мн. ч.: +те (читайте, делайте, идите)
-    if form.endswith("йте"):
-        stem = form[:-3]
-        if stem in stems:
-            return {"stem": stem, "mood": "imperative", "number": "plural"}
-    if form.endswith("й"):
-        stem = form[:-1]
+    # Повелительное: чита+й, ид+и; мн. ч.: +те (читайте, идите).
+    # Мн. ч. проверяем раньше ед. ч., чтобы не откусить только «и» или «й».
+    for suffix, sources in (
+        (IMPERATIVE_VOWEL + IMPERATIVE_PLURAL, stems),
+        (IMPERATIVE_CONSONANT + IMPERATIVE_PLURAL, consonant_stems),
+    ):
+        if form.endswith(suffix):
+            stem = form[: -len(suffix)]
+            if stem in sources:
+                return {"stem": stem, "mood": "imperative", "number": "plural"}
+
+    if form.endswith(IMPERATIVE_VOWEL):
+        stem = form[: -len(IMPERATIVE_VOWEL)]
         if stem in stems:  # чита → читай, писа → писай
             return {"stem": stem, "mood": "imperative", "number": "singular"}
-    if form.endswith("и") and not form.endswith("ти"):
-        stem = form[:-1]
+    if form.endswith(IMPERATIVE_CONSONANT) and not form.endswith("ти"):
+        stem = form[: -len(IMPERATIVE_CONSONANT)]
         if stem in consonant_stems:  # ид → иди
-            if stem.endswith("и") and stem[:-1] in consonant_stems \
-                    and form.endswith("ите"):
-                # идите: основа ид + и (пов.) + те (мн. ч.)
-                return {"stem": stem[:-1], "mood": "imperative", "number": "plural"}
             return {"stem": stem, "mood": "imperative", "number": "singular"}
 
     return None

@@ -77,8 +77,8 @@ class SqliteStorage:
         params = (
             lemma_ru or entry.lemma, entry.lemma, entry.stem, entry.pos,
             entry.stem_type,
-            json.dumps(entry.meta.get("allomorphs"), ensure_ascii=False)
-            if entry.meta.get("allomorphs") else None,
+            json.dumps(entry.allomorphs, ensure_ascii=False)
+            if entry.allomorphs else None,
             int(entry.meta.get("frequency", 0)),
             entry.meta.get("grammar_version", "1.0"),
         )
@@ -163,13 +163,13 @@ class SqliteStorage:
             " frequency FROM words ORDER BY id")
         for lemma, stem, pos, stem_type, allomorphs, frequency in cur:
             meta = {}
-            if allomorphs:
-                meta["allomorphs"] = json.loads(allomorphs)
             if frequency:
                 meta["frequency"] = frequency
-            entries.append(LexiconEntry(lemma=lemma, stem=stem, pos=pos,
-                                        stem_type=stem_type or "vowel",
-                                        meta=meta))
+            entries.append(LexiconEntry(
+                lemma=lemma, stem=stem, pos=pos,
+                stem_type=stem_type or "vowel",
+                allomorphs=json.loads(allomorphs) if allomorphs else {},
+                meta=meta))
         return Lexicon(entries)
 
 

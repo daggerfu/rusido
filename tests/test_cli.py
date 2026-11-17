@@ -56,7 +56,7 @@ def test_validate_strict_warning(tmp_path, capsys):
     src = tmp_path / "warn.txt"
     src.write_text("Я читам книгу", encoding="utf-8")
     assert main(["validate", str(src), "--strict"]) == 0
-    assert "[R007]" in capsys.readouterr().out
+    assert "[R017]" in capsys.readouterr().out
 
 
 def test_validate_output_file(tmp_path):

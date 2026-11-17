@@ -6,6 +6,9 @@
 
 import pytest
 
+from rusido.lexicon.dictionary import POS_NOUN, POS_PRON, POS_VERB
+from rusido.morphology.nouns import DATIVE, PLURAL, SINGULAR
+
 
 def test_noun_cases(translator):
     # NLP-разбор: именительный → ∅, винительный → -у
@@ -34,6 +37,34 @@ def test_verb_present_person(translator):
 def test_verb_past(translator):
     assert translator.translate("читал").text == "читал"
     assert translator.translate("читали").text == "читали"
+
+
+def test_verb_imperative(translator):
+    assert translator.translate("иди").text == "иди"
+    assert translator.translate("идите").text == "идите"
+    assert translator.translate("читай").text == "читай"
+    assert translator.translate("читайте").text == "читайте"
+
+
+def test_verb_allomorphs(translator):
+    # Инфинитивная основа «и-», остальные алломорфы «ид-» (Rusido.md, 7.1.1).
+    assert translator.translate("идти").text == "ити"
+    assert translator.translate("иду").text == "идем"
+    assert translator.translate("идет").text == "идет"
+    assert translator.translate("идел").text == "идел"
+    assert translator.translate("идели").text == "идели"
+    assert translator.translate("иди").text == "иди"
+    assert translator.translate("идите").text == "идите"
+
+
+def test_future_with_infinitive(translator):
+    # Личная форма будти + инфинитив основного глагола (Rusido.md, 7.4).
+    assert translator.translate("буду идти").text == "будем ити"
+    assert translator.translate("будем идти").text == "будеми ити"
+    assert translator.translate("будет идти").text == "будет ити"
+    assert translator.translate("будет читать").text == "будет читати"
+    # Без следующего инфинитива вспомогательный сохраняет «будти».
+    assert translator.translate("будет").text == "будет будти"
 
 
 def test_adjective_override(translator):
@@ -78,9 +109,31 @@ def test_result_metadata(translator):
 # --- эвристики MVP (use_nlp=False) ---
 
 def test_heuristic_noun_cases(heuristic_translator):
-    # MVP-эвристика падежа: -а без признака объекта → род. п., -у → вин. п.
-    assert heuristic_translator.translate("книга").text == "книго"
+    # Эвристика: -а без контекста → им. п., -у → вин. п.
+    assert heuristic_translator.translate("книга").text == "книг"
     assert heuristic_translator.translate("книгу").text == "книгу"
+
+
+def test_heuristic_object_after_verb(heuristic_translator):
+    # По SVO слово после глагола — объект; после вспомогательного — нет.
+    assert heuristic_translator.translate("я вижу собака").text == "я вижу собаку"
+    assert heuristic_translator.translate("завтра будет книга").text == \
+        "завтра будет книг"
+
+
+def test_heuristic_instrumental_to_dative():
+    # Русский творительный передаётся дательным — постоянное правило (D-013).
+    from rusido.translation.translator import _guess_ru_case
+    assert _guess_ru_case("домом", "домом") == DATIVE
+
+
+def test_heuristic_number_ignores_non_nouns():
+    # -и/-ы не означают мн. ч. у глаголов, прилагательных и местоимений.
+    from rusido.translation.translator import _guess_ru_number
+    assert _guess_ru_number("деньги", POS_NOUN) == PLURAL
+    assert _guess_ru_number("читали", POS_VERB) == SINGULAR
+    assert _guess_ru_number("они", POS_PRON) == SINGULAR
+    assert _guess_ru_number("остров", POS_NOUN) == SINGULAR
 
 
 def test_heuristic_plural_guess(heuristic_translator):

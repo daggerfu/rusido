@@ -1,0 +1,23 @@
+[
+  {
+    "lemma": "вишня",
+    "stem": "вишн",
+    "pos": "noun",
+    "stem_type": "vowel",
+    "ru_translation": "вишня"
+  },
+  {
+    "lemma": "метро",
+    "stem": "метр",
+    "pos": "noun",
+    "stem_type": "vowel",
+    "ru_translation": "метро"
+  },
+  {
+    "lemma": "телефон",
+    "stem": "телефон",
+    "pos": "noun",
+    "stem_type": "vowel",
+    "ru_translation": "телефон"
+  }
+]

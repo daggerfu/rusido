@@ -44,6 +44,31 @@ def test_agreement_error_r001(validator):
     assert any(e.code == "R001" for e in report.errors)
 
 
+def test_allomorph_verb_forms_valid(validator):
+    # Инфинитивная основа «и-», остальные алломорфы «ид-» (Rusido.md, 7.1.1).
+    for text in ("Я идем.", "Они идели.", "Иди.", "Идите.", "Я будем ити."):
+        report = validator.validate(text)
+        assert report.valid, (text, [(d.code, d.message) for d in report.errors])
+
+
+def test_all_predicates_checked(validator):
+    # Раньше break после первого глагола скрывал ошибки во второй части.
+    report = validator.validate("Я читаш и читат.")
+    diags = [d for d in report.errors if d.code == "R001"]
+    assert len(diags) == 2
+    assert "читаш" in diags[0].message
+    assert "читат" in diags[1].message
+
+
+def test_r006_continues_with_normalized_form(validator):
+    # «ёлка» → «елка»: после R006 форма всё равно проверяется как лексема.
+    report = validator.validate("ёлка.")
+    codes = [d.code for d in report.errors]
+    assert codes == ["R006", "R005"]
+    # «чёрный» нормализуется в известное слово — R005 не нужен.
+    assert [d.code for d in validator.validate("чёрный дом.").errors] == ["R006"]
+
+
 def test_agreement_valid(validator):
     assert validator.validate("Ми читами книгу.").valid
     assert validator.validate("Я читам книгу.").valid
@@ -55,6 +80,11 @@ def test_verb_forms_validate(validator):
     for form in ("читати", "читал", "читали", "читай", "читайте",
                  "идем", "идеш", "идет", "иди"):
         assert validator.validate_word(form).valid, form
+
+
+def test_consonant_imperative_plural_validates(validator):
+    # ид + и + те: форма образуется генератором и должна разбираться валидатором
+    assert validator.validate_word("идите").valid
 
 
 def test_noun_forms_validate(validator):
@@ -78,6 +108,25 @@ def test_numeral_number_rule_r015(validator):
     assert diag.suggestion == "книгиу"
 
 
+def test_teen_numeral_number_rule_r015(validator):
+    # «однадек» (11) тоже требует мн. ч. — форма должна попадать в R015.
+    report = validator.validate("однадек книгу.")
+    diag = next(e for e in report.errors if e.code == "R015")
+    assert diag.suggestion == "книгиу"
+
+
+def test_numeral_value_drives_agreement_r015(validator):
+    # Полное значение составного числа, а не последний компонент (§6.5).
+    assert validator.validate("нол столи.").valid
+    assert validator.validate("двадек одн столи.").valid  # 21
+    assert validator.validate("сто одн столи.").valid     # 101
+
+    for text in ("нол стол.", "двадек одн стол.", "сто одн стол."):
+        report = validator.validate(text)
+        diag = next(e for e in report.errors if e.code == "R015")
+        assert diag.suggestion == "столи", text
+
+
 def test_adjective_placement_warning_r008(validator):
     report = validator.validate("новий идет.")
     assert report.valid  # предупреждение, не ошибка
@@ -88,7 +137,7 @@ def test_strict_mode_warns_without_final_punctuation():
     from rusido import RusidoValidator
     validator = RusidoValidator(strict=True)
     report = validator.validate("Я читам книгу")
-    assert any(w.code == "R007" for w in report.warnings)
+    assert any(w.code == "R017" for w in report.warnings)
 
 
 def test_report_counters(validator):

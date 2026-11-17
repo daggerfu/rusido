@@ -62,7 +62,7 @@ def build_parser() -> argparse.ArgumentParser:
                       help="файл для отчёта (по умолчанию — stdout)")
     p_va.add_argument("--strict", action="store_true",
                       help="строгий режим (предупреждение без финальной "
-                           "пунктуации, код R007)")
+                           "пунктуации, код R017)")
 
     p_co = sub.add_parser("corpus", help="параллельный корпус (SQLite, §4.6)")
     co_sub = p_co.add_subparsers(dest="corpus_command", required=True)
