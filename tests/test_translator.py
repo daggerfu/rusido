@@ -98,8 +98,38 @@ def test_future_with_infinitive(translator):
     assert translator.translate("будем идти").text == "будеми ити"
     assert translator.translate("будет идти").text == "будет ити"
     assert translator.translate("будет читать").text == "будет читати"
-    # Без следующего инфинитива вспомогательный сохраняет «будти».
-    assert translator.translate("будет").text == "будет будти"
+    # Без инфинитива — самостоятельная связочная форма (Rusido.md §7.4, D-025).
+    assert translator.translate("будет").text == "будет"
+
+
+def test_future_copula_nominal_predicate(translator):
+    # §7.4: именная/качественная часть не несёт русского падежного окончания.
+    assert translator.translate("Он будет студентом").text == "Он будет студент"
+    assert translator.translate("Я буду аналитиком").text == "Я будем аналитик"
+    assert translator.translate("Мы будем специалистами").text == \
+        "Ми будеми специалисти"
+    assert translator.translate("Дом будет красивым").text == "Дом будет красивий"
+
+
+def test_future_existential_predicate(translator):
+    # §8.3: будти согласуется с обладаемым объектом по числу.
+    assert translator.translate("У меня будет книга").text == "У мне будет книг"
+    assert translator.translate("У него будет дом").text == "У нему будет дом"
+    assert translator.translate("У них будут собаки").text == \
+        "У ним будени собаки"
+    assert translator.translate("Завтра будет дождь").text == "Завтра будет дожд"
+
+
+def test_existential_present_predicate_invariant(translator):
+    # §8.3: «ест» — неизменяемый предикатор, а не форма глагола «ести».
+    assert translator.translate("У меня ест книга").text == "У мне ест книг"
+
+
+def test_future_action_keeps_infinitive(translator):
+    # §7.4: в вспомогательной конструкции инфинитив — отдельное слово.
+    assert translator.translate("Он будет читать").text == "Он будет читати"
+    assert translator.translate("Я буду работать").text == "Я будем работати"
+    assert translator.translate("Они будут строить").text == "Они будени строити"
 
 
 def test_adjective_override(translator):

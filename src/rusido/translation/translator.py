@@ -167,6 +167,10 @@ class RusidoTranslator:
                 case = prep_case
             elif previous and previous[-1] in _GENITIVE_PREDICATES:
                 case = nouns.GENITIVE
+            elif previous and previous[-1] in _FUTURE_COPULAS:
+                # §7.4: русский косвенный падеж именного сказуемого
+                # («студентом», «красивым») не переносится в Русидо.
+                case = nouns.NOMINATIVE
             elif analysis and analysis.case:
                 case = analysis.case
             else:
@@ -196,6 +200,11 @@ class RusidoTranslator:
                    analysis: RussianAnalysis | None = None,
                    following: tuple[str, ...] = ()) -> str:
         """Выбор формы глагола: сначала признаки NLP, затем эвристики MVP."""
+        # Экзистенциальный предикатор `ест` неизменяем (Rusido.md §8.3):
+        # pymorphy3 видит в нём форму «быть» и порождает «естет».
+        if entry.meta.get("invariant"):
+            return entry.source_form or entry.lemma
+
         stem_type = entry.stem_type
         # Инфинитивная основа может отличаться от основной (Rusido.md, 7.1.1):
         # ити → и- (инфинитив), ид- (остальные формы).
@@ -233,14 +242,12 @@ class RusidoTranslator:
         if ru_word.endswith("ть") or ru_word.endswith("ти"):
             return inf
 
-        # Будущее: личная форма будти + инфинитив основного глагола (7.4).
-        # Если инфинитив следует сразу, вспомогательный остаётся без «будти»:
-        # буду идти → будем ити, а не «будем будти ити».
+        # Будущее (Rusido.md §7.4, D-025): личная форма `будти` самостоятельна.
+        # Инфинитив основного глагола — отдельное слово, а не часть этой формы:
+        # будет читать → будет читати, но будет студент → будет студент.
         if ru_word.startswith("буд"):
             person, number = _future_person_number(ru_word)
-            if following and self._is_verb_infinitive(following[0]):
-                return verbs.future_auxiliary(person, number)
-            return verbs.conjugate_future(person, number, inf)
+            return verbs.future_auxiliary(person, number)
 
         # Повелительное: читайте, читай, пиши...
         if _looks_imperative(ru_word):
@@ -254,13 +261,6 @@ class RusidoTranslator:
         return verbs.conjugate_present(entry.stem_for(ALLO_PRESENT),
                                        person, number, stem_type)
 
-    def _is_verb_infinitive(self, ru_word: str) -> bool:
-        """Следующее слово — русский инфинитив глагола из лексикона."""
-        if not ru_word.endswith(("ть", "ти")):
-            return False
-        entry = self.lexicon.lookup(normalize_word(ru_word))
-        return entry is not None and entry.pos == POS_VERB
-
 
 def _cap(form: str, capitalize: bool) -> str:
     return (form[0].upper() + form[1:]) if capitalize and form else form
@@ -270,6 +270,9 @@ def _cap(form: str, capitalize: bool) -> str:
 _GENITIVE_PREPOSITIONS = {"из", "от", "без", "для", "од", "до"}
 _DATIVE_PREPOSITIONS = {"у", "к", "ко", "с", "о", "об", "под"}
 _COPULAS = {"ест", "есть", "был", "была", "было", "были"}
+# Личные формы `будти` в связочной функции (Rusido.md §7.4, D-025):
+# следующая именная часть сказуемого стоит в именительном падеже.
+_FUTURE_COPULAS = {"буду", "будеш", "будет", "будем", "будете", "будут"}
 # После вспомогательного будущего существительное остаётся в именительном
 # (D-003): «будет книга», а не объект «будет книгу».
 _FUTURE_AUXILIARIES = {"буду", "будеш", "будет", "будем", "будете", "будут"}
