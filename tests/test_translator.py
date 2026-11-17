@@ -157,3 +157,12 @@ def test_unknown_word_adds_warning(translator):
     assert any("партия" in w for w in result.warnings)
     # известные слова предупреждений не порождают
     assert translator.translate("книга").warnings == []
+
+
+def test_service_word_overrides(translator):
+    # Закрытый набор служебных слов (Rusido.md, 2.2) не выводится
+    # нормализацией и задаётся таблицей RU_TO_LEMMA_OVERRIDES.
+    assert translator.translate("что").text == "што"
+    assert translator.translate("чтобы").text == "штоби"
+    assert translator.translate("который").text == "кторий"
+    assert translator.translate("ещё").text == "ешо"

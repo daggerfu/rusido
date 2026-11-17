@@ -166,3 +166,18 @@ def test_spec_sample_text_validates(validator):
     )
     report = validator.validate(sample)
     assert report.valid, [(e.code, e.message) for e in report.errors]
+
+
+def test_diagnostics_carry_positions(validator):
+    # Диагностики уровня предложения локализуются: line/column/start/end.
+    report = validator.validate("Я читат книгу. два стол.")
+    r001 = [d for d in report.errors if d.code == "R001"]
+    assert len(r001) == 1
+    assert r001[0].line == 1
+    assert "читат" == "Я читат книгу. два стол."[r001[0].start:r001[0].end]
+    assert r001[0].column == r001[0].start
+    r015 = [d for d in report.errors if d.code == "R015"]
+    assert len(r015) == 1
+    # start покрывает весь числительный оборот, end — существительное
+    assert "два стол" == "Я читат книгу. два стол."[r015[0].start:r015[0].end]
+    assert "стол" == "Я читат книгу. два стол."[r015[0].column:r015[0].end]

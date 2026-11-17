@@ -38,6 +38,8 @@
 | `core/normalizer.py` | алфавит, запрещённые буквы, `normalize_word` |
 | `core/nlp.py` | `RussianMorphAnalyzer`, `RussianAnalysis` — разбор русских форм через pymorphy3 (опционально, откат на эвристики) |
 | `core/grammar.py` | `GrammarProfile`, `load_grammar` — загрузка формальной грамматики из `data/grammar/grammar.yaml` (тест `test_grammar_yaml` держит YAML и код синхронно) |
+| `core/tokens.py` | классификаторы внешних токенов (цифры, латиница, аббревиатуры, имена с дефисным показателем) — орфографическая оболочка Rusido.md §1.1 |
+| `validation/codes.py` | реестр диагностических кодов R001—R018 с категорией, условием и статусом `implemented`/`reserved` |
 | `lexicon/dictionary.py` | `Lexicon`, `LexiconEntry`, константы POS и типов основ (STEM_VOWEL/STEM_PALATAL, VERB_VOWEL/VERB_CONSONANT); загрузка/экспорт JSON; 535+ записей (bootstrap из `lexicon/bootstrap.py`) |
 | `morphology/nouns.py` | `inflect_noun`, константы числа/падежа |
 | `morphology/verbs.py` | спряжение, будущее, повелительное, условное |

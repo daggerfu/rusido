@@ -13,6 +13,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from rusido.core.normalizer import normalize_word
+from rusido.exceptions import InvalidFeatureError
 
 POS_NOUN = "noun"
 POS_VERB = "verb"
@@ -61,6 +62,18 @@ class LexiconEntry:
     def all_stems(self) -> set[str]:
         """Все основы записи, включая алломорфы (для разбора форм)."""
         return {self.stem, *self.allomorphs.values()}
+
+    def set_allomorph(self, kind: str, stem: str) -> None:
+        """Зафиксировать алломорф для одного из четырёх типов форм (D-015).
+
+        Неизвестный тип формы отвергается: стабильный набор ALLOMORPH_KINDS
+        используется переводчиком, валидатором и морфологическим анализатором.
+        """
+        if kind not in ALLOMORPH_KINDS:
+            raise InvalidFeatureError(
+                f"неизвестный тип алломорфа '{kind}'; допустимы: "
+                f"{', '.join(ALLOMORPH_KINDS)}")
+        self.allomorphs[kind] = normalize_word(stem)
 
 
 def _n(lemma, stem, **kw):
@@ -202,6 +215,7 @@ DEFAULT_LEXICON: list[LexiconEntry] = [
     LexiconEntry("если", "если", POS_CONJ),
     LexiconEntry("когда", "когда", POS_CONJ),
     LexiconEntry("што", "што", POS_CONJ),
+    LexiconEntry("штоби", "штоби", POS_CONJ),
     LexiconEntry("кторий", "кторий", POS_CONJ),
     LexiconEntry("в", "в", POS_PREP),
     LexiconEntry("на", "на", POS_PREP),
@@ -253,6 +267,13 @@ class Lexicon:
         for entry in entries:
             self.add(entry)
 
+    def __len__(self) -> int:
+        """Число лексических записей (критерий MVP — README.md, §15)."""
+        return len(self._by_lemma)
+
+    def __contains__(self, lemma: str) -> bool:
+        return lemma in self._by_lemma
+
     def add(self, entry: LexiconEntry) -> None:
         # Лемма, основа и каноническая форма хранятся в орфографии Русидо:
         # нормализация при добавлении (Rusido.md, 2.2 и 2.6).
@@ -261,6 +282,10 @@ class Lexicon:
         if entry.source_form is not None:
             entry.source_form = normalize_word(entry.source_form)
         if entry.allomorphs:
+            unknown = set(entry.allomorphs) - set(ALLOMORPH_KINDS)
+            if unknown:
+                raise InvalidFeatureError(
+                    f"неизвестные типы алломорфов: {', '.join(sorted(unknown))}")
             entry.allomorphs = {kind: normalize_word(stem)
                                 for kind, stem in entry.allomorphs.items()}
         self._by_lemma.setdefault(entry.lemma, entry)

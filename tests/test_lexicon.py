@@ -6,6 +6,15 @@ from rusido.lexicon.dictionary import DEFAULT_LEXICON, POS_NOUN, LexiconEntry
 
 def test_lexicon_size_mvp_criterion():
     assert len(DEFAULT_LEXICON) >= 500
+    # Полный лексикон (включая data/lexicon/*.json) тоже удовлетворяет §15.
+    assert len(Lexicon()) >= 500
+
+
+def test_lexicon_len_and_contains():
+    lex = Lexicon()
+    assert len(lex) == len(lex._by_lemma)
+    assert "идти" in lex
+    assert "нет-такого-слова" not in lex
 
 
 def test_no_duplicate_lemmas():
@@ -53,6 +62,45 @@ def test_json_roundtrip_allomorphs():
                          allomorphs={"infinitive": "и"})
     restored = Lexicon.from_json(Lexicon([entry]).to_json())
     assert restored.lookup("идти").allomorphs == {"infinitive": "и"}
+
+
+def test_allomorph_kinds_validated():
+    from rusido.exceptions import InvalidFeatureError
+    from rusido.lexicon.dictionary import ALLOMORPH_KINDS
+
+    assert set(ALLOMORPH_KINDS) == {
+        "infinitive", "present", "past", "imperative"}
+    bad = LexiconEntry(lemma="идти", stem="ид", pos="verb",
+                       allomorphs={"future": "ид"})
+    try:
+        Lexicon([bad])
+    except InvalidFeatureError:
+        pass
+    else:
+        raise AssertionError("неизвестный тип алломорфа должен отвергаться")
+
+    entry = LexiconEntry(lemma="идти", stem="ид", pos="verb")
+    entry.set_allomorph("infinitive", "и")
+    assert entry.stem_for("infinitive") == "и"
+
+
+def test_allomorph_end_to_end():
+    """Алломорфы работают в переводчике, валидаторе и анализаторе."""
+    from rusido import RusidoAnalyzer, RusidoTranslator
+
+    translator = RusidoTranslator(use_nlp=False)
+    assert translator.translate("идти").text == "ити"
+    assert translator.translate("я иду").text == "я идем"
+
+    validator = RusidoValidator()
+    for form in ("ити", "идем", "идел", "иди"):
+        assert validator.validate_word(form).valid, form
+
+    analyzer = RusidoAnalyzer()
+    assert any(item.pos == "verb" and item.root == "и"
+               for item in analyzer.analyze("ити"))
+    assert any(item.pos == "verb" and item.root == "ид"
+               for item in analyzer.analyze("идем"))
 
 
 def test_external_dictionaries_loaded():

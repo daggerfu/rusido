@@ -1,7 +1,8 @@
 """Валидатор Русидо (README.md, разделы 3.2, 9; Rusido.md, разделы 1—10).
 
 Проверяет текст по уровням: орфография → лексика → морфология → синтаксис.
-Каждая диагностика имеет стабильный код ошибки (R001—R017).
+Каждая диагностика имеет стабильный код ошибки (R001—R018).
+Внешние токены (§1.1) не проходят морфологический анализатор.
 """
 
 from __future__ import annotations
@@ -11,6 +12,9 @@ from dataclasses import dataclass, field
 
 from rusido.core.normalizer import (
     ALPHABET, DOUBLED_CONSONANT, FORBIDDEN_LETTERS, normalize_word,
+)
+from rusido.core.tokens import (
+    has_digit, has_latin, hyphenated_case_suffix, is_abbreviation,
 )
 from rusido.lexicon.dictionary import (
     POS_ADJ, POS_ADV, POS_CONJ, POS_NUM, POS_NOUN, POS_PARTICLE, POS_PREP,
@@ -31,7 +35,17 @@ FUTURE_PERSON_NUMBER = {
 }
 PAST_PLURAL_SUBJECTS = {"ми", "ви", "они"}
 
+# Для счётчиков оставляем классическое «слово»: только кириллица.
 _WORD_RE = re.compile(r"[а-яёьъ]+", re.IGNORECASE)
+# Для проверки берём более широкий атом, чтобы видеть цифры, латиницу,
+# дефис и посторонние символы (R018). Разделители — пробелы и знаки §2.8.
+_TOKEN_RE = re.compile(r"[^\s.,;:!?«»\"()\[\]…—]+")
+# Цифровое выражение: целое, десятичное, разряды, процент, дробь, диапазон.
+_NUM_EXPR_RE = re.compile(
+    r"(?<![\w.])"
+    r"(?P<num>-?\d+(?:\s\d{3})*(?:[.,]\d+)?)"
+    r"(?P<tail>(?:/\d+|%|\s*[-–]\s*-?\d+(?:\s\d{3})*(?:[.,]\d+)?))?"
+)
 
 
 @dataclass
@@ -84,11 +98,13 @@ class RusidoValidator:
             sentence_count += max(
                 len(re.findall(r"[.!?]", line)), 1 if words else 0)
 
-            for match in _WORD_RE.finditer(line):
-                word = match.group()
-                token_count_local = word
-                diags = self._check_word(token_count_local, lineno, match.start())
-                for d in diags:
+            for match in _TOKEN_RE.finditer(line):
+                raw = match.group()
+                # Внешние токены сохраняют исходное написание (§1.1, §2.9, §9.3)
+                # и не проходят орфографическую/морфологическую проверку.
+                if _is_external_token(raw):
+                    continue
+                for d in self._check_word(raw, lineno, match.start()):
                     (errors if d.severity == "error" else warnings).append(d)
 
             sent_errors, sent_warnings = self._check_sentence(line, lineno)
@@ -105,7 +121,9 @@ class RusidoValidator:
 
     def validate_word(self, word: str) -> ValidationReport:
         report = ValidationReport(valid=True)
-        for d in self._check_word(word.lower(), 1, 0):
+        if _is_external_token(word):
+            return report
+        for d in self._check_word(word, 1, 0):
             if d.severity == "error":
                 report.errors.append(d)
                 report.valid = False
@@ -174,7 +192,10 @@ class RusidoValidator:
 
     def _check_sentence(self, line: str, lineno: int) -> tuple[list, list]:
         errors, warnings = [], []
-        words = [w.lower() for w in _WORD_RE.findall(line)]
+        # Позиции токенов для локализации диагностик (column/start/end).
+        tokens = [(m.group().lower(), m.start(), m.end())
+                  for m in _WORD_RE.finditer(line)]
+        words = [t[0] for t in tokens]
         if not words:
             return errors, warnings
 
@@ -197,7 +218,9 @@ class RusidoValidator:
                             "R001", "error",
                             f"несогласованность подлежащего и сказуемого: "
                             f"'{subj}' / '{w}'",
-                            suggestion=expected, line=lineno))
+                            suggestion=expected, line=lineno,
+                            column=tokens[i][1], start=tokens[i][1],
+                            end=tokens[i][2]))
                 # Проверяем каждое сказуемое: в предложении их может быть
                 # несколько (сочинение, сложное предложение).
 
@@ -211,7 +234,12 @@ class RusidoValidator:
                     errors.append(Diagnostic(
                         "R001", "error",
                         f"несогласованность подлежащего и вспомогательного '{w}'",
-                        line=lineno))
+                        line=lineno, column=tokens[i][1],
+                        start=tokens[i][1], end=tokens[i][2]))
+
+        # R015 для цифровой записи (Rusido.md, §6.7): значение ровно 1
+        # требует единственного числа, все остальные значения — множественного.
+        self._check_numeric_agreement(line, lineno, errors)
 
         # R015 — числительное и число существительного (Rusido.md, 6.5).
         # Значение берётся по всему составному числительному, а не по
@@ -235,7 +263,9 @@ class RusidoValidator:
                         "R015", "error",
                         f"нарушение правила числа после числительного "
                         f"'{' '.join(words[i:end])}': '{words[end]}'",
-                        suggestion=expected, line=lineno))
+                        suggestion=expected, line=lineno,
+                        column=tokens[end][1], start=tokens[i][1],
+                        end=tokens[end][2]))
             i = end + 1
 
         # R008 — прилагательное перед существительным (Rusido.md, 8.2)
@@ -247,9 +277,52 @@ class RusidoValidator:
                     warnings.append(Diagnostic(
                         "R008", "warning",
                         f"после прилагательного '{w}' ожидается существительное",
-                        line=lineno))
+                        line=lineno, column=tokens[i][1],
+                        start=tokens[i][1], end=tokens[i][2]))
 
         return errors, warnings
+
+    def _check_numeric_agreement(self, line: str, lineno: int,
+                                 errors: list[Diagnostic]) -> None:
+        """Согласование существительного с числом, записанным цифрами (§6.7)."""
+        for match in _NUM_EXPR_RE.finditer(line):
+            raw = match.group()
+            # Дата и время — специальные форматы, не количественные числительные.
+            tail_end = match.end()
+            after = line[tail_end:tail_end + 1]
+            before = line[match.start() - 1:match.start()]
+            if after in {".", ":"} and line[tail_end + 1:tail_end + 2].isdigit():
+                continue
+            if before == "." and line[match.start() - 2:match.start() - 1].isdigit():
+                continue
+
+            value = _numeric_quantity_value(raw)
+            if value is None:
+                continue
+
+            # Следующее слово может существительным — проверяем его число.
+            rest = line[tail_end:]
+            noun_match = re.match(r"\s+([а-яёьъ]+)", rest, re.IGNORECASE)
+            if noun_match is None:
+                continue
+            noun_raw = noun_match.group(1)
+            info = self._known_noun_form(noun_raw.lower())
+            if info is None:
+                continue
+            need_plural = value != 1
+            has_plural = info["number"] == "plural"
+            if need_plural == has_plural:
+                continue
+            stem = info["root"].rstrip("ь")
+            expected = nouns.inflect_noun(
+                stem, "plural" if need_plural else "singular",
+                info["case"], grammar=self.grammar)
+            column = match.start() + len(raw) + (noun_match.start(1))
+            errors.append(Diagnostic(
+                "R015", "error",
+                f"нарушение правила числа после числовой записи '{raw.strip()}': "
+                f"'{noun_raw}'",
+                suggestion=expected, line=lineno, column=column))
 
     # ---------- помощники ----------
 
@@ -329,6 +402,40 @@ class RusidoValidator:
             if d < best_d:
                 best, best_d = lemma, d
         return best
+
+
+def _is_external_token(raw: str) -> bool:
+    """Внешний токен (Rusido.md, §1.1): цифры, латиница, аббревиатура,
+    оригинальное имя с падежным показателем через дефис (§2.9, §9.3).
+
+    Такой токен сохраняет исходное написание и не получает R005/R006/R007/R018.
+    """
+    if has_digit(raw) or has_latin(raw) or hyphenated_case_suffix(raw):
+        return True
+    if is_abbreviation(raw) and normalize_word(raw) == raw:
+        # Полностью заглавное написание разрешено, но запрещённые буквы
+        # и удвоенные согласные всё равно диагностируются (R006/R007).
+        return True
+    return False
+
+
+def _numeric_quantity_value(raw: str) -> float | None:
+    """Числовое значение цифровой записи (Rusido.md, §6.7)."""
+    text = raw.strip().replace("\u00a0", "").replace(" ", "")
+    if "/" in text:
+        left, _, right = text.partition("/")
+        try:
+            return float(left.replace(",", ".")) / float(right.replace(",", "."))
+        except (ValueError, ZeroDivisionError):
+            return None
+    if "%" in text:
+        text = text.rstrip("%")
+    parts = re.split(r"[-–]", text)
+    text = parts[-1] if len(parts) > 1 else text
+    try:
+        return float(text.replace(",", "."))
+    except ValueError:
+        return None
 
 
 _PRONOUN_NOMINATIVE = {
