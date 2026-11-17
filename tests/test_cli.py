@@ -21,6 +21,29 @@ def test_translate_positional_source(tmp_path):
     assert out.read_text(encoding="utf-8") == "книгу"
 
 
+def test_translate_inline_text(capsys):
+    # README.md §8.2: rusido translate "Я читаю новую книгу."
+    assert main(["translate", "Мы изучаем русский язык."]) == 0
+    assert capsys.readouterr().out == "Ми изучами руский язик.\n"
+
+
+def test_translate_explicit_text_flag(capsys):
+    assert main(["translate", "--text", "книгу"]) == 0
+    assert capsys.readouterr().out == "книгу\n"
+
+
+def test_translate_missing_file_still_errors(tmp_path, capsys):
+    # Путь с расширением остаётся путём: опечатка в имени не станет текстом.
+    with pytest.raises(SystemExit) as exc:
+        main(["translate", str(tmp_path / "net.txt")])
+    assert "не могу прочитать" in str(exc.value)
+
+
+def test_validate_inline_text(capsys):
+    assert main(["validate", "Я читам книгу."]) == 0
+    assert "валиден: да" in capsys.readouterr().out
+
+
 def test_translate_stdin_stdout(tmp_path, capsys, monkeypatch):
     monkeypatch.setattr("sys.stdin", type("S", (), {"read": lambda self: "книга"})())
     assert main(["translate"]) == 0

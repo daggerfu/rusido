@@ -1,8 +1,9 @@
 """CLI Русидо (README.md, раздел 7.6): перевод и валидация текста.
 
 Запуск из корня репозитория:
+    PYTHONPATH=src python3 -m rusido.cli translate "Я читаю книгу."
     PYTHONPATH=src python3 -m rusido.cli translate -i input.txt -o output.txt
-    PYTHONPATH=src python3 -m rusido.cli validate text.txt
+    PYTHONPATH=src python3 -m rusido.cli validate "Я читам книгу."
     PYTHONPATH=src python3 -m rusido.cli dictionary list -p verb -a
     PYTHONPATH=src python3 -m rusido.cli dictionary export --format md -o lex.md
 """
@@ -10,6 +11,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from pathlib import Path
 
@@ -26,6 +28,31 @@ def _read_text(path: str | None) -> str:
         return Path(path).read_text(encoding="utf-8")
     except OSError as e:
         raise SystemExit(f"{PROG}: не могу прочитать '{path}': {e}") from e
+
+
+# Имя файла: разделитель пути или расширение. Точка в конце предложения
+# («язык.») расширением не считается (README.md §8.2).
+_PATH_RE = re.compile(r"[\\/]|\.[A-Za-z0-9]{1,5}$")
+
+
+def _read_source(args: argparse.Namespace) -> str:
+    """Взять текст из `--text`, файла (`-i` / позиционный аргумент) или stdin.
+
+    Позиционный аргумент может быть и путём, и самим текстом: именно так
+    команда показана в README.md §8.2 (`rusido translate "книга"`).
+    Файл распознаётся по разделителю пути, расширению или факту наличия
+    на диске; всё остальное считается введённым текстом.
+    """
+    if getattr(args, "text", None) is not None:
+        return args.text
+    if getattr(args, "input_file", None) is not None:
+        return _read_text(args.input_file)
+    source = getattr(args, "source", None)
+    if source in (None, "-"):
+        return sys.stdin.read()
+    if _PATH_RE.search(source) or Path(source).exists():
+        return _read_text(source)
+    return source
 
 
 def _write_text(path: str | None, text: str) -> None:
@@ -47,7 +74,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_tr = sub.add_parser("translate", help="перевести текст в Русидо")
     p_tr.add_argument("source", nargs="?", default=None,
-                      help="входной файл (по умолчанию — stdin)")
+                      help="файл или текст для перевода (по умолчанию — stdin)")
+    p_tr.add_argument("-t", "--text", default=None,
+                      help="перевести текст напрямую, без обращения к файлу")
     p_tr.add_argument("-i", "--input", dest="input_file", default=None,
                       help="входной файл (перекрывает позиционный аргумент)")
     p_tr.add_argument("-o", "--output", default=None,
@@ -57,7 +86,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_va = sub.add_parser("validate", help="проверить текст Русидо")
     p_va.add_argument("source", nargs="?", default=None,
-                      help="входной файл (по умолчанию — stdin)")
+                      help="файл или текст для проверки (по умолчанию — stdin)")
+    p_va.add_argument("-t", "--text", default=None,
+                      help="проверить текст напрямую, без обращения к файлу")
     p_va.add_argument("-i", "--input", dest="input_file", default=None,
                       help="входной файл (перекрывает позиционный аргумент)")
     p_va.add_argument("-o", "--output", default=None,
@@ -121,9 +152,8 @@ def _open_storage(args) -> "SqliteStorage":
 
 
 def cmd_translate(args: argparse.Namespace) -> int:
-    source = args.input_file or args.source
     translator = RusidoTranslator(use_nlp=not args.no_nlp)
-    result = translator.translate(_read_text(source))
+    result = translator.translate(_read_source(args))
     _write_text(args.output, result.text)
     for warning in result.warnings:
         print(f"{PROG}: предупреждение: {warning}", file=sys.stderr)
@@ -131,9 +161,8 @@ def cmd_translate(args: argparse.Namespace) -> int:
 
 
 def cmd_validate(args: argparse.Namespace) -> int:
-    source = args.input_file or args.source
     validator = RusidoValidator(strict=args.strict)
-    report = validator.validate(_read_text(source))
+    report = validator.validate(_read_source(args))
     lines = [
         f"валиден: {'да' if report.valid else 'нет'}",
         f"предложений: {report.sentences}",
