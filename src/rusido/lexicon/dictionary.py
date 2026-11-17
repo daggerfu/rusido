@@ -140,11 +140,14 @@ DEFAULT_LEXICON: list[LexiconEntry] = [
     _v("ходить", "хо", "ходити"),
     _v("мочь", "мож", "мочити", stem_type=VERB_CONSONANT),
     _v("знать", "зна", "знати"),
-    _v("сказать", "ска", "сказати"),
+    _v("сказать", "сказ", "сказати"),
     _v("приходить", "прихо", "приходити"),
     _v("прочитать", "прочита", "прочитати"),
     _v("начинать", "нача", "начати"),
     _v("продолжать", "продолжа", "продолжати"),
+    _v("прийти", "прий", "прийти", stem_type=VERB_CONSONANT, allomorphs={
+        ALLO_PAST: "приш", ALLO_IMPERATIVE: "прийд",
+    }),
     _v("строить", "стро", "строити"),
     # --- Прилагательные (Rusido.md, раздел 4) ---
     _a("новый", "нов"),
@@ -192,6 +195,11 @@ DEFAULT_LEXICON: list[LexiconEntry] = [
     ]],
     # --- Наречия, частицы, союзы, предлоги (Rusido.md, 8.6—8.8) ---
     LexiconEntry("уже", "уже", POS_ADV),
+    LexiconEntry("бистро", "бистро", POS_ADV),
+    LexiconEntry("бистрей", "бистрей", POS_ADV),
+    LexiconEntry("бистрейш", "бистрейш", POS_ADV),
+    LexiconEntry("холодно", "холодно", POS_ADV),
+    LexiconEntry("плохо", "плохо", POS_ADV),
     LexiconEntry("вчера", "вчера", POS_ADV),
     LexiconEntry("завтра", "завтра", POS_ADV),
     LexiconEntry("сегодня", "сегодня", POS_ADV),
@@ -208,6 +216,7 @@ DEFAULT_LEXICON: list[LexiconEntry] = [
     LexiconEntry("би", "би", POS_PARTICLE),
     LexiconEntry("ли", "ли", POS_PARTICLE),
     LexiconEntry("не", "не", POS_PARTICLE),
+    LexiconEntry("же", "же", POS_PARTICLE),  # §8.8: усилительная частица
     LexiconEntry("и", "и", POS_CONJ),
     LexiconEntry("или", "или", POS_CONJ),
     LexiconEntry("но", "но", POS_CONJ),
@@ -217,6 +226,12 @@ DEFAULT_LEXICON: list[LexiconEntry] = [
     LexiconEntry("што", "што", POS_CONJ),
     LexiconEntry("штоби", "штоби", POS_CONJ),
     LexiconEntry("кторий", "кторий", POS_CONJ),
+    LexiconEntry("также", "также", POS_CONJ),
+    LexiconEntry("тоже", "тоже", POS_CONJ),
+    LexiconEntry("однако", "однако", POS_CONJ),
+    LexiconEntry("либо", "либо", POS_CONJ),
+    LexiconEntry("так", "так", POS_CONJ),
+    LexiconEntry("потому", "потому", POS_CONJ),
     LexiconEntry("в", "в", POS_PREP),
     LexiconEntry("на", "на", POS_PREP),
     LexiconEntry("у", "у", POS_PREP),
@@ -228,6 +243,17 @@ DEFAULT_LEXICON: list[LexiconEntry] = [
     LexiconEntry("для", "для", POS_PREP),
     LexiconEntry("о", "о", POS_PREP),
     LexiconEntry("од", "од", POS_PREP),
+    # Вопросительные местоимения (Rusido.md, 5.5)
+    LexiconEntry("кто", "кто", POS_PRON, meta={"kind": "interr"}),
+    LexiconEntry("какий", "какий", POS_PRON, meta={"kind": "interr"}),
+    LexiconEntry("где", "где", POS_PRON, meta={"kind": "interr"}),
+    LexiconEntry("куда", "куда", POS_PRON, meta={"kind": "interr"}),
+    LexiconEntry("откуда", "откуда", POS_PRON, meta={"kind": "interr"}),
+    LexiconEntry("почему", "почему", POS_PRON, meta={"kind": "interr"}),
+    LexiconEntry("как", "как", POS_PRON, meta={"kind": "interr"}),
+    LexiconEntry("сколько", "сколько", POS_PRON, meta={"kind": "interr"}),
+    LexiconEntry("под", "под", POS_PREP),  # §8.6: под столе
+    LexiconEntry("до", "до", POS_PREP),    # §9.1: приставка до-, управление в CLI
     # Служебные формы глагольной связки и безличного местоимения
     LexiconEntry("ест", "ест", POS_VERB, stem_type=VERB_CONSONANT,
                  source_form="ест", meta={"invariant": True}),

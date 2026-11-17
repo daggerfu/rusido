@@ -20,7 +20,7 @@ from rusido.lexicon.dictionary import (
     POS_ADJ, POS_ADV, POS_CONJ, POS_NUM, POS_NOUN, POS_PARTICLE, POS_PREP,
     POS_PRON, POS_VERB, Lexicon,
 )
-from rusido.morphology import adjectives, nouns, verbs
+from rusido.morphology import adjectives, nouns, numerals, verbs
 
 # Личные окончания настоящего времени и их признаки субъекта
 PRESENT_PERSON_NUMBER = {
@@ -182,6 +182,9 @@ class RusidoValidator:
         if low.endswith(adjectives.ADJECTIVE_SUFFIX) and \
                 low[: -len(adjectives.ADJECTIVE_SUFFIX)] in self._adj_stems():
             return diags
+        # Порядковые числительные: -им к последнему компоненту (§6.6, D-022).
+        if self._known_ordinal_form(low):
+            return diags
 
         diags.append(Diagnostic(
             "R005", "error", f"неизвестное слово '{word}'",
@@ -202,6 +205,12 @@ class RusidoValidator:
         # R001 — согласование подлежащего и сказуемого в настоящем времени.
         # Формы «ест» (связка) и повелительного наклонения не проверяются.
         for i, w in enumerate(words):
+            # Омонимия «брате»: дательное существительное (брат + -е, §3.4)
+            # и бра- + -те (2 л. мн., §7.2). Финитный глагол не имеет падежа,
+            # поэтому некодинитивная падежная форма выигрывает без NLP (D-014).
+            noun_info = self._known_noun_form(w)
+            if noun_info is not None and noun_info["case"] != "nominative":
+                continue
             info = self._known_verb_form(w)
             if info and info.get("tense") == "present" \
                     and not info.get("no_agreement"):
@@ -377,6 +386,19 @@ class RusidoValidator:
             number = "plural" if num_suf == "и" else "singular"
             case = nouns.CASE_SUFFIXES_INV[case_suf]
         return {"root": root, "number": number, "case": case}
+
+    def _known_ordinal_form(self, word: str) -> bool:
+        """Порядковое числительное на -им (Rusido.md, §6.6).
+
+        Суффикс присоединяется к последнему компоненту составного числа:
+        «сто двадек пятим». Проверяется основа, а не все слово целиком,
+        поэтому генератор `numerals.ordinal` и валидатор синхронны.
+        """
+        suffix = numerals.ORDINAL_SUFFIX
+        if not word.endswith(suffix):
+            return False
+        base = word[:-len(suffix)]
+        return base in NUMERAL_VALUES
 
     def _known_verb_form(self, word: str) -> dict | None:
         stems, cons, inv = self._verb_data()

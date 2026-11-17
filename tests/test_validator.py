@@ -64,7 +64,8 @@ def test_r006_continues_with_normalized_form(validator):
     # «ёлка» → «елка»: после R006 форма всё равно проверяется как лексема.
     report = validator.validate("ёлка.")
     codes = [d.code for d in report.errors]
-    assert codes == ["R006", "R005"]
+    # «елка» есть в лексиконе, поэтому после R006 R005 не выдаётся.
+    assert codes == ["R006"]
     # «чёрный» нормализуется в известное слово — R005 не нужен.
     assert [d.code for d in validator.validate("чёрный дом.").errors] == ["R006"]
 
@@ -181,3 +182,27 @@ def test_diagnostics_carry_positions(validator):
     # start покрывает весь числительный оборот, end — существительное
     assert "два стол" == "Я читат книгу. два стол."[r015[0].start:r015[0].end]
     assert "стол" == "Я читат книгу. два стол."[r015[0].column:r015[0].end]
+
+
+def test_dative_noun_not_confused_with_verb_r001(validator):
+    # Пример §3.5: «брате» — брат + -е (дат. п.), а не бра- + -те (2 л. мн.).
+    report = validator.validate("Я давам книгу брате.")
+    assert report.valid, [(d.code, d.message) for d in report.errors]
+    assert not any(d.code == "R001" for d in report.errors)
+
+
+@pytest.mark.parametrize("word", [
+    "одним", "дваим", "триим", "четирим", "пятим",
+    "стоим", "двадек триим", "сто двадек пятим", "девятим",
+])
+def test_ordinal_numerals_valid(validator, word):
+    # Порядковые числительные образуются с помощью -им (Rusido.md, §6.6).
+    report = validator.validate(word + ".")
+    assert report.valid, [(d.code, d.message) for d in report.errors]
+
+
+def test_ordinal_matches_generator(validator):
+    from rusido.morphology.numerals import ordinal_number
+    for n in (1, 4, 5, 21, 100, 125, 2000, 9999):
+        text = ordinal_number(n)
+        assert validator.validate(text + ".").valid, (n, text)

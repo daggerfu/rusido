@@ -103,6 +103,21 @@ def test_allomorph_end_to_end():
                for item in analyzer.analyze("идем"))
 
 
+def test_spec_function_words_in_lexicon():
+    # §8.6 и §8.8: предлоги и частицы из спецификации должны быть словарными.
+    lex = Lexicon()
+    for word in ("под", "до"):
+        assert lex.lookup(word).pos == "prep", word
+    assert lex.lookup("же").pos == "particle"
+    assert validator_word_valid(lex, "под")
+    assert validator_word_valid(lex, "же")
+
+
+def validator_word_valid(lex, word):
+    from rusido import RusidoValidator
+    return RusidoValidator(lexicon=lex).validate_word(word).valid
+
+
 def test_external_dictionaries_loaded():
     lex = Lexicon()
     for lemma in ("вишня", "метро", "телефон"):

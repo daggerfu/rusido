@@ -20,6 +20,11 @@ def test_noun_plural(translator):
     assert translator.translate("собаки").text == "собаки"
 
 
+def test_preposition_pod_takes_dative(translator):
+    # Rusido.md §8.6: под столом → под столе (статическое местоположение).
+    assert translator.translate("под столом").text == "под столе"
+
+
 def test_verb_infinitive(translator):
     assert translator.translate("читать").text == "читати"
     assert translator.translate("идти").text == "ити"  # орфография: идти → ити
