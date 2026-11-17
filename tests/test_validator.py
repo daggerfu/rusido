@@ -206,3 +206,13 @@ def test_ordinal_matches_generator(validator):
     for n in (1, 4, 5, 21, 100, 125, 2000, 9999):
         text = ordinal_number(n)
         assert validator.validate(text + ".").valid, (n, text)
+
+
+def test_agreement_is_scoped_to_sentence(validator):
+    # Пунктуация (Rusido.md, §2.8) разделяет предложения: «я» из первой
+    # части не должно попадать в согласование со сказуемым второй части.
+    for text in ("Я читам. Он читат.", "Он говорил: «Я читам».",
+                 "— Я читам.", "«Ти читаш?» — он читат."):
+        report = validator.validate(text)
+        assert report.valid, (text, [(d.code, d.message)
+                                     for d in report.errors])

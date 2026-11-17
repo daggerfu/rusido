@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+import bisect
+
 import re
 from dataclasses import dataclass, field
 
@@ -40,6 +42,9 @@ _WORD_RE = re.compile(r"[а-яёьъ]+", re.IGNORECASE)
 # Для проверки берём более широкий атом, чтобы видеть цифры, латиницу,
 # дефис и посторонние символы (R018). Разделители — пробелы и знаки §2.8.
 _TOKEN_RE = re.compile(r"[^\s.,;:!?«»\"()\[\]…—]+")
+# Границы предложения/реплики (Rusido.md, §2.8): согласование проверяется
+# внутри одного сегмента, а не через точку, тире или кавычки.
+_CLAUSE_SEPARATOR_RE = re.compile(r"[.!?;:…—«»]")
 # Цифровое выражение: целое, десятичное, разряды, процент, дробь, диапазон.
 _NUM_EXPR_RE = re.compile(
     r"(?<![\w.])"
@@ -201,6 +206,7 @@ class RusidoValidator:
         words = [t[0] for t in tokens]
         if not words:
             return errors, warnings
+        clause_starts = _clause_start_indices(line, tokens)
 
         # R001 — согласование подлежащего и сказуемого в настоящем времени.
         # Формы «ест» (связка) и повелительного наклонения не проверяются.
@@ -216,7 +222,7 @@ class RusidoValidator:
                     and not info.get("no_agreement"):
                 verb_p, verb_n = PRESENT_PERSON_NUMBER.get(
                     _present_suffix_of(w, info), (None, None))
-                subj = self._find_subject(words, i)
+                subj = self._find_subject(words, i, clause_starts[i])
                 if subj and verb_p is not None:
                     s_person, s_number = _pronoun_agreement(subj)
                     if s_person is not None and (s_person != verb_p
@@ -237,7 +243,7 @@ class RusidoValidator:
         for i, w in enumerate(words):
             if w in FUTURE_PERSON_NUMBER and FUTURE_PERSON_NUMBER[w]:
                 p, n = FUTURE_PERSON_NUMBER[w]
-                subj = self._find_subject(words, i)
+                subj = self._find_subject(words, i, clause_starts[i])
                 s_person, s_number = _pronoun_agreement(subj) if subj else (None, None)
                 if s_person is not None and (s_person != p or s_number != n):
                     errors.append(Diagnostic(
@@ -404,8 +410,10 @@ class RusidoValidator:
         stems, cons, inv = self._verb_data()
         return nouns.segment_verb(word, stems, cons, inv)
 
-    def _find_subject(self, words: list[str], verb_index: int) -> str | None:
-        for w in words[:verb_index]:
+    def _find_subject(self, words: list[str], verb_index: int,
+                      clause_start: int = 0) -> str | None:
+        """Ближайшее подлежащее внутри одного предложения (§2.8)."""
+        for w in words[clause_start:verb_index]:
             if w in _PRONOUN_NOMINATIVE:
                 return w
         return None
@@ -424,6 +432,18 @@ class RusidoValidator:
             if d < best_d:
                 best, best_d = lemma, d
         return best
+
+
+def _clause_start_indices(line: str,
+                          tokens: list[tuple[str, int, int]]) -> list[int]:
+    """Для каждого токена — индекс первого слова его предложения (§2.8)."""
+    starts = [t[1] for t in tokens]
+    separators = [m.end() for m in _CLAUSE_SEPARATOR_RE.finditer(line)]
+    result: list[int] = []
+    for start in starts:
+        k = bisect.bisect_left(separators, start)
+        result.append(0 if k == 0 else bisect.bisect_left(starts, separators[k - 1]))
+    return result
 
 
 def _is_external_token(raw: str) -> bool:
